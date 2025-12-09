@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sakoon AI Therapist Companion</title>
+    <meta name="description" content="Sakoon AI is your personal AI therapist companion, offering private, calming emotional support, mood-based reflections, CBT-inspired guidance, and 24/7 availability. Start your wellbeing journey today." />
+    <meta name="keywords" content="AI therapist, emotional support AI, mental health companion, Sakoon AI, CBT AI, mood therapy chatbot, wellness AI assistant, digital mental health tool" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Find Calm with Sakoon AI Therapist Companion" />
+    <meta property="og:description" content="A safe, soothing AI companion designed to help you reflect, heal, and grow — anytime." />
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Quicksand', 'Inter', 'sans-serif'],
+              body: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              lavender: {
+                50: '#f7f7fd',
+                100: '#efeffb',
+                200: '#dcdcf7',
+                300: '#c0c0f0',
+                400: '#9f86c0', // Primary Brand
+                500: '#8365ab',
+                600: '#694c8e',
+                900: '#34264a',
+              },
+              teal: {
+                50: '#f0fdfa',
+                100: '#ccfbf1',
+                400: '#7fb7be', // Calm Teal
+                500: '#5e9ca4',
+                600: '#0d9488',
+              },
+              beige: {
+                50: '#fffdf7', // Light App Bg
+                100: '#fcfbf4',
+                200: '#f2f0e4',
+              },
+              navy: {
+                800: '#231942',
+                900: '#1a1a2e', // Dark Mode Bg
+                950: '#100e1d',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://aistudiocdn.com/react@^19.2.1/",
+        "react": "https://aistudiocdn.com/react@^19.2.1",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.7"
+      }
+    }
+    </script>
+  </head>
+  <body class="bg-beige-50 text-slate-800 dark:bg-navy-900 dark:text-slate-100 transition-colors duration-300">
+    <div id="root"></div>
+  </body>
+</html>
