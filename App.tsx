@@ -27,7 +27,7 @@ function App() {
     const path = window.location.pathname;
     if (path === '/status' || path === '/credits' || path === '/crisis-support') return;
 
-    const storedUser = localStorage.getItem('sakoon_current_user');
+    const storedUser = localStorage.getItem('sukoon_current_user');
     if (storedUser) {
         const u = JSON.parse(storedUser);
         setUser(u);
@@ -37,8 +37,10 @@ function App() {
 
   const handleUpdateUser = (updated: UserSettings) => {
       setUser(updated);
-      updateUserProfile(updated);
-      localStorage.setItem('sakoon_current_user', JSON.stringify(updated));
+      if (!updated.is_anonymous) {
+        updateUserProfile(updated);
+        localStorage.setItem('sukoon_current_user', JSON.stringify(updated));
+      }
       if (updated.darkMode) document.documentElement.classList.add('dark');
       else document.documentElement.classList.remove('dark');
   };
@@ -50,7 +52,7 @@ function App() {
   };
 
   const handleLogout = () => {
-      localStorage.removeItem('sakoon_current_user');
+      localStorage.removeItem('sukoon_current_user');
       setUser(null);
       setActiveTab('chat');
   };
@@ -70,7 +72,7 @@ function App() {
     }
 
     switch(activeTab) {
-      case 'chat': return <ChatPage settings={user} onUpdateUser={handleUpdateUser} />;
+      case 'chat': return <ChatPage settings={user} onUpdateUser={handleUpdateUser} onSignUp={handleLogout} />;
       case 'journal': return <JournalPage userId={user.id} />;
       case 'directory': return <TherapistDirectory />;
       case 'support': return <SupportPage />;
@@ -79,7 +81,7 @@ function App() {
       case 'team': return <TeamPage />;
       case 'terms': return <TermsPage />;
       case 'therapist-dashboard': return <TherapistDashboard />;
-      default: return <ChatPage settings={user} onUpdateUser={handleUpdateUser} />;
+      default: return <ChatPage settings={user} onUpdateUser={handleUpdateUser} onSignUp={handleLogout} />;
     }
   };
 

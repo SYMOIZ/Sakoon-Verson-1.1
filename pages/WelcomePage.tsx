@@ -1,6 +1,8 @@
+
+
 import React, { useState, useEffect } from 'react';
-import { UserSettings, Gender, Profession, TonePreference, Language, AIResponseStyle, Pronouns } from '../types';
-import { loginUser, registerUser } from '../services/authService';
+import { UserSettings, Gender, Profession, TonePreference, Language, Religion } from '../types';
+import { loginUser, registerUser, signInAnonymously } from '../services/authService';
 import { TermsPage } from './TermsPage';
 import { CHECKIN_POOLS } from '../constants';
 import { saveCheckInEvent } from '../services/dataService';
@@ -13,27 +15,25 @@ type ViewState = 'landing' | 'login' | 'signup' | 'terms' | 'checkIn' | 'content
 
 const LANGUAGES: Language[] = ['English', 'Urdu', 'Roman Urdu', 'Sindhi', 'Pashto', 'Siraiki', 'Arabic', 'Spanish'];
 const TONES: TonePreference[] = ['Cute', 'Mature', 'Friendly', 'Soft', 'Calm', 'Direct'];
-const AI_STYLES: AIResponseStyle[] = ['Empathetic', 'Direct', 'Analytical'];
-const PRONOUNS: Pronouns[] = ['She/Her', 'He/Him', 'They/Them', 'Prefer not to say'];
 
 const getRandomQuestion = (pool: string[]) => pool[Math.floor(Math.random() * pool.length)];
 
 // --- CONTENT PAGES DATA ---
 const CONTENT_PAGES: Record<string, { title: string, content: string }> = {
     // Therapy Approaches
-    '/therapy/types': { title: 'All Therapy Approaches', content: 'Explore our evidence-based therapeutic styles designed to help you navigate your emotions. From structured CBT to mindfulness-based practices, Sakoon offers a variety of ways to heal. We combine modern psychology with accessible AI guidance.' },
-    '/therapy/cbt': { title: 'Cognitive Behavioral Therapy (CBT)', content: 'CBT helps you identify unhelpful thoughts and beliefs and replace them with practical, reality-based alternatives. Sakoon offers short exercises and thought logs that you can complete in minutes. Ideal for: stress, anxiety, negative thinking, overthinking.' },
-    '/therapy/dbt': { title: 'Dialectical Behavior Therapy (DBT)', content: 'DBT techniques focus on emotion regulation, distress tolerance and interpersonal effectiveness. Sakoon provides step-by-step grounding exercises and crisis-planning templates. Ideal for: emotional ups/downs, anger, impulsivity, conflict.' },
-    '/therapy/psychodynamic': { title: 'Psychodynamic Therapy', content: 'This approach explores recurring emotional patterns and early influences. Sakoon gently prompts reflection on patterns that affect present behavior and relationships. Ideal for: long-term patterns, inner conflicts, relationship issues.' },
-    '/therapy/gestalt': { title: 'Gestalt Therapy', content: 'Gestalt methods emphasize present-moment awareness and experiential clarity. Sakoon guides short awareness exercises that help you name and process current experience. Ideal for: self-awareness, blocked emotions, confusion.' },
-    '/therapy/adlerian': { title: 'Adlerian Therapy', content: 'Adlerian tools help build purpose, social connectedness and confidence. Use Sakoon’s guided reflections to define goals and take small, doable steps toward them. Ideal for: self-esteem, motivation, identity, life direction.' },
-    '/therapy/compassion': { title: 'Compassion-Focused Therapy', content: 'Learn to treat yourself with kindness; Sakoon offers self-compassion scripts and exercises to reduce self-criticism. Ideal for: self-criticism, guilt, shame, emotional healing.' },
+    '/therapy/types': { title: 'All Therapy Approaches', content: 'Explore our evidence-based therapeutic styles designed to help you navigate your emotions. From structured CBT to mindfulness-based practices, Sukoon offers a variety of ways to heal. We combine modern psychology with accessible AI guidance.' },
+    '/therapy/cbt': { title: 'Cognitive Behavioral Therapy (CBT)', content: 'CBT helps you identify unhelpful thoughts and beliefs and replace them with practical, reality-based alternatives. Sukoon offers short exercises and thought logs that you can complete in minutes. Ideal for: stress, anxiety, negative thinking, overthinking.' },
+    '/therapy/dbt': { title: 'Dialectical Behavior Therapy (DBT)', content: 'DBT techniques focus on emotion regulation, distress tolerance and interpersonal effectiveness. Sukoon provides step-by-step grounding exercises and crisis-planning templates. Ideal for: emotional ups/downs, anger, impulsivity, conflict.' },
+    '/therapy/psychodynamic': { title: 'Psychodynamic Therapy', content: 'This approach explores recurring emotional patterns and early influences. Sukoon gently prompts reflection on patterns that affect present behavior and relationships. Ideal for: long-term patterns, inner conflicts, relationship issues.' },
+    '/therapy/gestalt': { title: 'Gestalt Therapy', content: 'Gestalt methods emphasize present-moment awareness and experiential clarity. Sukoon guides short awareness exercises that help you name and process current experience. Ideal for: self-awareness, blocked emotions, confusion.' },
+    '/therapy/adlerian': { title: 'Adlerian Therapy', content: 'Adlerian tools help build purpose, social connectedness and confidence. Use Sukoon’s guided reflections to define goals and take small, doable steps toward them. Ideal for: self-esteem, motivation, identity, life direction.' },
+    '/therapy/compassion': { title: 'Compassion-Focused Therapy', content: 'Learn to treat yourself with kindness; Sukoon offers self-compassion scripts and exercises to reduce self-criticism. Ideal for: self-criticism, guilt, shame, emotional healing.' },
     '/therapy/mindfulness': { title: 'Mindfulness-Based Support', content: 'Short, practical mindfulness practices for immediate stress relief and improved concentration. Ideal for: anxiety, racing thoughts, burnout, stress.' },
-    '/therapy/solution-focused': { title: 'Solution-Focused Brief Support', content: 'When you need quick forward movement, Sakoon helps you generate small, measurable next steps and track progress. Ideal for: quick progress, motivation, short-term goals.' },
+    '/therapy/solution-focused': { title: 'Solution-Focused Brief Support', content: 'When you need quick forward movement, Sukoon helps you generate small, measurable next steps and track progress. Ideal for: quick progress, motivation, short-term goals.' },
     
     // Topics
-    '/therapy/topics': { title: 'All Topics', content: 'Sakoon provides support for a wide range of emotional challenges. Whether you are dealing with anxiety, relationship issues, or just daily stress, we are here to listen.' },
-    '/topics/depression': { title: 'Depression & Low Mood', content: 'Feeling low, empty, or hopeless can be overwhelming. Sakoon provides simple mood tracking, behavioral activation tasks, and safety guidance to find small steps forward.' },
+    '/therapy/topics': { title: 'All Topics', content: 'Sukoon provides support for a wide range of emotional challenges. Whether you are dealing with anxiety, relationship issues, or just daily stress, we are here to listen.' },
+    '/topics/depression': { title: 'Depression & Low Mood', content: 'Feeling low, empty, or hopeless can be overwhelming. Sukoon provides simple mood tracking, behavioral activation tasks, and safety guidance to find small steps forward.' },
     '/topics/anxiety': { title: 'Anxiety & Panic', content: 'When worry feels uncontrollable, breathing techniques, grounding, worry scheduling and exposure planning can help calm the mind.' },
     '/topics/stress': { title: 'Stress & Academic Pressure', content: 'Life can get heavy. Learn to manage prioritization frameworks, study routines, and micro-break systems for sustained productivity.' },
     '/topics/self-esteem': { title: 'Self-Esteem & Confidence', content: 'Build a kinder relationship with yourself. We help you challenge inner criticism and use strengths inventories to improve self-talk.' },
@@ -45,7 +45,7 @@ const CONTENT_PAGES: Record<string, { title: string, content: string }> = {
 
     // Struggles
     '/topics/struggles': { title: 'Everyday Struggles', content: 'You are not alone in what you are facing. From loneliness to procrastination, these challenges are part of the human experience.' },
-    '/struggles/loneliness': { title: 'Coping with Loneliness', content: 'Feeling isolated is painful. Sakoon offers guided community events, daily micro-check-ins, and peer support suggestions.' },
+    '/struggles/loneliness': { title: 'Coping with Loneliness', content: 'Feeling isolated is painful. Sukoon offers guided community events, daily micro-check-ins, and peer support suggestions.' },
     '/struggles/bullying': { title: 'Support for Bullying', content: 'Being targeted hurts deeply. We offer safety planning, assertive communication templates, and escalation guidance.' },
     '/struggles/breakups': { title: 'Healing from Breakups', content: 'Heartbreak is one of life’s toughest challenges. We walk with you through coping steps, rituals for closure, and short journaling prompts.' },
     '/struggles/work-life': { title: 'Work-Life Balance', content: 'Finding equilibrium between career and personal life is key to mental health. Use weekly planning templates and time-boxing tools.' },
@@ -57,13 +57,13 @@ const CONTENT_PAGES: Record<string, { title: string, content: string }> = {
     // University
     '/university-support': { 
         title: 'For University Students', 
-        content: 'Sakoon was developed for the rhythm and pressures of university life. We recognize exam cycles, group projects, accommodation moves, and identity exploration as core sources of stress. Features tailored for students include exam-period routines, professor-communication templates, CV and interview confidence scripts, and campus resource directories.\n\nStudents can use Sakoon as an ongoing study companion: check-ins before exams, targeted concentration exercises, and recovery plans after burnout. Sakoon also supports peer communities and campus-specific resources where available.\n\nIf you are part of an institution, Sakoon can be integrated as a campus wellbeing offering with privacy controls and administrative analytics.' 
+        content: 'Sukoon was developed for the rhythm and pressures of university life. We recognize exam cycles, group projects, accommodation moves, and identity exploration as core sources of stress. Features tailored for students include exam-period routines, professor-communication templates, CV and interview confidence scripts, and campus resource directories.\n\nStudents can use Sukoon as an ongoing study companion: check-ins before exams, targeted concentration exercises, and recovery plans after burnout. Sukoon also supports peer communities and campus-specific resources where available.\n\nIf you are part of an institution, Sukoon can be integrated as a campus wellbeing offering with privacy controls and administrative analytics.' 
     },
     
     // Other
-    '/about': { title: 'Our Story', content: 'Sakoon was born from a desire to make emotional support accessible, private, and stigma-free. Built by a team of passionate developers and mental health advocates.' },
+    '/about': { title: 'Our Story', content: 'Sukoon was born from a desire to make emotional support accessible, private, and stigma-free. Built by a team of passionate developers and mental health advocates.' },
     '/careers': { title: 'Careers', content: 'Join us in our mission to democratize mental wellness. We are always looking for talented engineers and psychologists.' },
-    '/contact': { title: 'Contact Us', content: 'Reach out to support@sakoon.ai for inquiries.' }
+    '/contact': { title: 'Contact Us', content: 'Reach out to support@sukoon.ai for inquiries.' }
 };
 
 export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
@@ -77,11 +77,9 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
   // Registration State
   const [regData, setRegData] = useState({
       name: '', email: '', password: '', confirmPassword: '',
-      age: '', region: '', gender: 'Female' as Gender, pronouns: 'She/Her' as Pronouns, profession: 'Student' as Profession,
-      language: 'English' as Language, tone: 'Soft' as TonePreference,
-      aiResponseStyle: 'Empathetic' as AIResponseStyle,
-      preferredTherapistGender: 'No Preference' as 'Female' | 'Male' | 'No Preference',
-      preventPhoneContact: false
+      age: '', region: '', gender: 'Female' as Gender, profession: 'Student' as Profession,
+      religion: 'Hindu' as Religion,
+      language: 'English' as Language, tone: 'Soft' as TonePreference
   });
 
   const [error, setError] = useState('');
@@ -129,16 +127,15 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
   const handleLogin = async () => {
       setError('');
       setIsLoading(true);
-      if (loginData.email === 'admin@sakoon.com' && loginData.password === '@dmin1218') {
+      if (loginData.email === 'admin@sukoon.com' && loginData.password === '@dmin1218') {
           onComplete({
-              id: 'admin', email: 'admin@sakoon.com', name: 'Administrator',
-              age: 0, region: 'Global', gender: 'Other', pronouns: 'Prefer not to say', profession: 'Other',
+              id: 'admin', email: 'admin@sukoon.com', name: 'Administrator',
+              age: 0, region: 'Global', gender: 'Other', profession: 'Other', religion: 'Other',
+              is_anonymous: false,
               preferredLanguage: 'English', tonePreference: 'Direct',
-              aiResponseStyle: 'Analytical',
               voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
               therapistStyle: 'gentle', personalityMode: 'introvert',
-              darkMode: false, isAdmin: true, stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] },
-              preferredTherapistGender: 'No Preference', preventPhoneContact: false
+              darkMode: false, isAdmin: true, stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
           });
           setIsLoading(false);
           return;
@@ -155,8 +152,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       if (regData.password.length < 6) { setError("Password must be at least 6 characters."); return; }
       if (regData.password !== regData.confirmPassword) { setError("Passwords do not match."); return; }
       
+      const ageNum = parseInt(regData.age);
+      if (isNaN(ageNum) || ageNum < 13) {
+          setError("You must be at least 13 years old to sign up.");
+          return;
+      }
+      
       setIsLoading(true);
-      const result = await registerUser({ ...regData, age: parseInt(regData.age) });
+      const result = await registerUser({ ...regData, age: ageNum });
       setIsLoading(false);
       
       if (result.error) {
@@ -166,7 +169,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       }
   };
 
-  // 0. TERMS VIEW (unchanged)
+  // 0. TERMS VIEW
   if (view === 'terms') {
       return (
           <div className="h-screen flex flex-col">
@@ -179,7 +182,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       );
   }
 
-  // 0.1 CONTENT VIEW (unchanged)
+  // 0.1 CONTENT VIEW (Simulated Pages)
   if (view === 'content') {
       const page = CONTENT_PAGES[contentPath] || { title: 'Page', content: 'Content not found.' };
       return (
@@ -196,7 +199,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       );
   }
 
-  // 0.5 CHECK-IN FLOW (unchanged)
+  // 0.5 CHECK-IN FLOW
   if (view === 'checkIn') {
       const handleAnswer = (key: keyof typeof checkInAnswers, value: string) => {
           setCheckInAnswers(prev => ({ ...prev, [key]: value }));
@@ -210,27 +213,22 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
           setTimeout(() => setCheckInStep(prev => prev + 1), 400); 
       };
 
-      const handleGuestLogin = () => {
-          const guestUser: UserSettings = {
-            id: 'guest-' + crypto.randomUUID().slice(0, 8),
-            email: 'guest@sakoon.ai',
-            name: 'Guest',
-            age: 25, region: 'Global', gender: 'Other', pronouns: 'Prefer not to say', profession: 'Other',
-            preferredLanguage: 'English', tonePreference: 'Calm',
-            aiResponseStyle: 'Empathetic',
-            voiceEnabled: false, autoPlayAudio: false, memoryEnabled: false,
-            therapistStyle: 'gentle', personalityMode: 'introvert', darkMode: false, isAdmin: false,
-            stats: { totalActiveDays: 1, lastActiveDate: new Date().toLocaleDateString('en-CA'), badges: [] },
-            preferredTherapistGender: 'No Preference', preventPhoneContact: false
-          };
-          onComplete(guestUser);
+      const handleGuestLogin = async () => {
+          setIsLoading(true);
+          const guestUser = await signInAnonymously();
+          setIsLoading(false);
+          if (guestUser) {
+              onComplete(guestUser);
+          } else {
+              alert("Could not start a guest session. Please try again later.");
+          }
       };
 
       return (
           <div className="min-h-screen bg-beige-50 flex items-center justify-center p-6">
               <div className="w-full max-w-lg bg-white p-8 rounded-3xl shadow-xl transition-all duration-500">
                   <div className="w-full h-1.5 bg-slate-100 rounded-full mb-8 overflow-hidden">
-                      <div className="h-full bg-teal-500 transition-all duration-500" style={{ width: `${((checkInStep + 1) / 4) * 100}%` }} />
+                      <div className="h-full bg-teal-400 transition-all duration-500" style={{ width: `${((checkInStep + 1) / 4) * 100}%` }} />
                   </div>
 
                   {checkInStep === 0 && (
@@ -275,7 +273,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                           </p>
                           <div className="space-y-4">
                               <button onClick={() => setView('signup')} className="w-full py-4 bg-lavender-500 text-white rounded-xl font-bold hover:bg-lavender-600 transition-colors shadow-lg shadow-lavender-200">Sign Up & Continue With Me</button>
-                              <button onClick={handleGuestLogin} className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors">Continue as Guest</button>
+                              <button onClick={handleGuestLogin} disabled={isLoading} className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-colors disabled:opacity-70">{isLoading ? 'Starting...' : 'Continue as Guest'}</button>
                           </div>
                       </div>
                   )}
@@ -285,7 +283,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       );
   }
 
-  // 1. LANDING VIEW (unchanged)
+  // 1. LANDING VIEW - CLONED AESTHETIC (Abby.gg Style)
   if (view === 'landing') {
     return (
       <div className="min-h-screen bg-[#FDFCF8] font-sans overflow-x-hidden">
@@ -294,7 +292,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
             <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
                 <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setView('landing')}>
                     <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-lg group-hover:scale-105 transition-transform">S</div>
-                    <span className="font-bold text-2xl text-slate-900 tracking-tight">Sakoon</span>
+                    <span className="font-bold text-2xl text-slate-900 tracking-tight">Sukoon</span>
                 </div>
                 <div className="hidden lg:flex gap-8 text-sm font-medium text-slate-600">
                     <button onClick={() => navigateTo('/therapy/types')} className="hover:text-slate-900 transition-colors">Approaches</button>
@@ -316,14 +314,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
             
             <div className="max-w-7xl mx-auto text-center">
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm mb-8 animate-fade-in">
-                    <span className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></span>
+                    <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
                     <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">24/7 AI Therapist Companion</span>
                 </div>
                 <h1 className="text-6xl lg:text-8xl font-bold text-slate-900 mb-8 tracking-tight leading-[1.1] max-w-5xl mx-auto">
                     Therapy that fits <br className="hidden md:block"/> in your <span className="text-transparent bg-clip-text bg-gradient-to-r from-lavender-500 to-teal-500">pocket.</span>
                 </h1>
                 <p className="text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
-                    Sakoon is your private, intelligent, and empathetic companion. 
+                    Sukoon is your private, intelligent, and empathetic companion. 
                     Navigate stress, anxiety, and university life with a friend who never judges and never sleeps.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -361,7 +359,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                 <div className="row-span-2 bg-[#F0FDFA] rounded-[2rem] p-10 relative overflow-hidden group border border-slate-100/50 hover:shadow-lg transition-all">
                     <div className="relative z-10">
                         <h3 className="text-2xl font-bold text-slate-900 mb-2">24/7 Availability</h3>
-                        <p className="text-slate-600 mb-8">Panic attack at 3 AM? Stress before an 8 AM exam? Sakoon is always awake.</p>
+                        <p className="text-slate-600 mb-8">Panic attack at 3 AM? Stress before an 8 AM exam? Sukoon is always awake.</p>
                         <div className="space-y-3">
                             {['Always Private', 'Encrypted', 'Anonymous', 'No Judgment'].map(item => (
                                 <div key={item} className="flex items-center gap-3 text-teal-800 font-medium">
@@ -429,7 +427,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                 <div className="col-span-2 lg:col-span-2">
                     <div className="flex items-center gap-2 mb-6">
                         <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold">S</div>
-                        <span className="font-bold text-xl text-slate-900">Sakoon</span>
+                        <span className="font-bold text-xl text-slate-900">Sukoon</span>
                     </div>
                     <p className="text-slate-500 text-sm leading-relaxed max-w-xs mb-6">
                         Your safe space for emotional support and mindful healing. Created by students, for students.
@@ -467,15 +465,15 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
             </div>
             
             <div className="max-w-7xl mx-auto px-6 border-t border-slate-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
-                <p>© {new Date().getFullYear()} Sakoon AI. Not a medical service.</p>
-                <p>© {new Date().getFullYear()} Sakoon — Built by WebSyntex.</p>
+                <p>© {new Date().getFullYear()} Sukoon AI. Not a medical service.</p>
+                <p>© {new Date().getFullYear()} Sukoon — Built by WebSyntex.</p>
             </div>
         </footer>
       </div>
     );
   }
 
-  // 2. LOGIN VIEW (unchanged)
+  // 2. LOGIN & 3. SIGNUP Views (unchanged logic, updated container styling for consistency)
   if (view === 'login') {
       return (
         <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center p-6">
@@ -483,7 +481,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                 <div className="text-center mb-8">
                     <div className="w-12 h-12 bg-slate-900 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">S</div>
                     <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
-                    <p className="text-slate-500">Log in to continue. If you prefer not to use email, use the <button className="underline text-teal-600" onClick={() => { setLoginData({email:'1', password:'1'}); handleLogin(); }}>Test Login</button> (devs only).</p>
+                    <p className="text-slate-500">Login to your safe space.</p>
                 </div>
                 {error && <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-sm rounded-xl text-center">{error}</div>}
                 <div className="space-y-4">
@@ -500,58 +498,45 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       );
   }
 
-  // 3. SIGNUP VIEW (Redesigned)
   if (view === 'signup') {
       return (
         <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center p-6 py-12">
             <div className="w-full max-w-2xl bg-white p-10 rounded-[2rem] shadow-xl border border-slate-100">
-                <h2 className="text-3xl font-bold text-slate-900 mb-2 text-center">Create your safe space</h2>
-                <p className="text-slate-500 mb-8 text-center">We prioritize your privacy and comfort. You do not need a Google account.</p>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2 text-center">Create your account</h2>
+                <p className="text-slate-500 mb-8 text-center">Begin your healing journey. Your space is always private.</p>
                 {error && <div className="mb-6 p-3 bg-rose-50 text-rose-600 text-sm rounded-xl text-center">{error}</div>}
-                
                 <div className="grid md:grid-cols-2 gap-6">
                     <div className="col-span-2 md:col-span-1 space-y-4">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Account</label>
-                        <input type="text" placeholder="Full Name (or Nickname)" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.name} onChange={e => setRegData({...regData, name: e.target.value})} />
-                        <input type="email" placeholder="Email" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.email} onChange={e => setRegData({...regData, email: e.target.value})} />
-                        <input type="password" placeholder="Password" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.password} onChange={e => setRegData({...regData, password: e.target.value})} />
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Personal Details</label>
+                        <input type="text" placeholder="Full Name" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.name} onChange={e => setRegData({...regData, name: e.target.value})} />
+                         <input type="email" placeholder="Email" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.email} onChange={e => setRegData({...regData, email: e.target.value})} />
+                         <input type="password" placeholder="Password" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.password} onChange={e => setRegData({...regData, password: e.target.value})} />
                         <input type="password" placeholder="Confirm Password" className="w-full p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.confirmPassword} onChange={e => setRegData({...regData, confirmPassword: e.target.value})} />
                     </div>
-                    
                     <div className="col-span-2 md:col-span-1 space-y-4">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">About You</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Personalization</label>
                         <div className="flex gap-2">
                             <input type="number" placeholder="Age" className="w-1/3 p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.age} onChange={e => setRegData({...regData, age: e.target.value})} />
-                            <select className="w-2/3 p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.gender} onChange={e => setRegData({...regData, gender: e.target.value as Gender})}>
-                                <option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option>
-                            </select>
+                            <input type="text" placeholder="Region" className="w-2/3 p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.region} onChange={e => setRegData({...regData, region: e.target.value})} />
                         </div>
-
-                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.pronouns} onChange={e => setRegData({...regData, pronouns: e.target.value as Pronouns})}>
-                            {PRONOUNS.map(p => <option key={p} value={p}>Pronouns: {p}</option>)}
+                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.gender} onChange={e => setRegData({...regData, gender: e.target.value as Gender})}>
+                            <option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option>
                         </select>
-
+                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.religion} onChange={e => setRegData({...regData, religion: e.target.value as Religion})}>
+                            <option value="Hindu">Hindu</option><option value="Muslim">Muslim</option><option value="Christian">Christian</option><option value="Other">Other</option>
+                        </select>
                         <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.profession} onChange={e => setRegData({...regData, profession: e.target.value as Profession})}>
                             <option value="Student">Student</option><option value="Working Professional">Working Professional</option><option value="Both">Both</option><option value="Other">Other</option>
                         </select>
-                        
-                        <div className="pt-2">
-                             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Preferences (Optional)</label>
-                             <select className="w-full mt-2 p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.preferredTherapistGender} onChange={e => setRegData({...regData, preferredTherapistGender: e.target.value as any})}>
-                                <option value="No Preference">Therapist Gender: Any</option>
-                                <option value="Female">Therapist Gender: Female</option>
-                                <option value="Male">Therapist Gender: Male</option>
-                             </select>
-                        </div>
-                        
-                        <div className="flex items-center gap-2 mt-2">
-                             <input type="checkbox" id="phoneConsent" checked={regData.preventPhoneContact} onChange={e => setRegData({...regData, preventPhoneContact: e.target.checked})} className="w-4 h-4 accent-teal-600" />
-                             <label htmlFor="phoneConsent" className="text-sm text-slate-600">I do not want to be contacted by phone.</label>
-                        </div>
+                         <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.language} onChange={e => setRegData({...regData, language: e.target.value as Language})}>
+                            {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.tone} onChange={e => setRegData({...regData, tone: e.target.value as TonePreference})}>
+                            {TONES.map(t => <option key={t} value={t}>{t} Tone</option>)}
+                        </select>
                     </div>
                 </div>
-                
-                <button onClick={handleSignup} disabled={isLoading} className="w-full mt-8 py-4 bg-teal-500 text-white rounded-xl font-bold hover:bg-teal-600 transition-all shadow-lg hover:shadow-xl disabled:opacity-70">{isLoading ? 'Creating Space...' : 'Create Account'}</button>
+                <button onClick={handleSignup} disabled={isLoading} className="w-full mt-8 py-4 bg-teal-400 text-white rounded-xl font-bold hover:bg-teal-500 transition-all shadow-lg hover:shadow-xl disabled:opacity-70">{isLoading ? 'Creating Account...' : 'Create Account'}</button>
                 <div className="mt-6 text-center text-sm">
                     <p className="text-slate-500">Already have an account? <button onClick={() => setView('login')} className="text-teal-600 font-bold hover:underline">Log In</button></p>
                     <button onClick={() => setView('landing')} className="mt-4 text-slate-400 hover:text-slate-600">Back to Home</button>

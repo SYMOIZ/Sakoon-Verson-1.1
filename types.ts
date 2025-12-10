@@ -1,5 +1,4 @@
 
-
 export enum MessageRole {
   USER = 'user',
   MODEL = 'model',
@@ -16,7 +15,6 @@ export interface Message {
   groundingLinks?: string[];
   image?: string; 
   videoUri?: string;
-  isRedacted?: boolean; // New flag for PII
 }
 
 export interface Memory {
@@ -54,11 +52,10 @@ export type PersonalityMode = 'introvert' | 'extrovert';
 
 // New Personalization Types
 export type Gender = 'Male' | 'Female' | 'Other';
-export type Pronouns = 'She/Her' | 'He/Him' | 'They/Them' | 'Prefer not to say';
 export type Profession = 'Working Professional' | 'Student' | 'Both' | 'Other';
 export type TonePreference = 'Cute' | 'Mature' | 'Friendly' | 'Soft' | 'Calm' | 'Direct';
-export type AIResponseStyle = 'Empathetic' | 'Direct' | 'Analytical';
 export type Language = 'English' | 'Urdu' | 'Roman Urdu' | 'Sindhi' | 'Pashto' | 'Siraiki' | 'Arabic' | 'Spanish';
+export type Religion = 'Hindu' | 'Muslim' | 'Christian' | 'Other';
 
 export interface Badge {
   id: string;
@@ -79,31 +76,25 @@ export interface UserSettings {
   id: string;
   email: string;
   name: string;
+  is_anonymous?: boolean;
   
   // Expanded Profile
   age: number;
   region: string;
   gender: Gender;
-  pronouns: Pronouns; // New
+  religion: Religion;
   profession: Profession;
   preferredLanguage: Language;
   
-  // Preferences
   voiceEnabled: boolean;
   autoPlayAudio: boolean;
   memoryEnabled: boolean;
   deepMode?: boolean; 
   
-  // Therapy Config
   therapistStyle: TherapistStyle;
   personalityMode: PersonalityMode;
   tonePreference: TonePreference;
-  aiResponseStyle: AIResponseStyle;
   
-  // Matching Preferences
-  preferredTherapistGender: 'Female' | 'Male' | 'No Preference';
-  preventPhoneContact: boolean;
-
   darkMode: boolean;
   isAdmin?: boolean; 
   stats: UserStats;
@@ -119,7 +110,6 @@ export interface Therapist {
   id: string;
   name: string;
   specialty: string;
-  tags: string[]; // e.g. ["Iqra University", "CBT"]
   location: string;
   languages: string[];
   experience: number;
@@ -127,8 +117,6 @@ export interface Therapist {
   imageUrl?: string;
   bookingUrl: string;
   availableSlots: { day: string, time: string, duration: string }[];
-  contactBusiness?: string;
-  publicListing?: boolean;
 }
 
 export interface SessionRating {
@@ -167,24 +155,6 @@ export interface AdminAlert {
   status: 'active' | 'resolved';
 }
 
-export interface SafetyCase {
-  id: string;
-  userId: string;
-  category: 'SELF_HARM' | 'HARM_TO_OTHERS' | 'EMOTIONAL_DISTRESS' | 'PII_EXPOSURE';
-  aiSummary: string; // Sanitized summary, no raw PII
-  status: 'active' | 'resolved' | 'investigating';
-  timestamp: number;
-  encryptedPayload?: string; // Mock for raw data storage
-}
-
-export interface AuditLog {
-  id: string;
-  actorId: string;
-  action: 'VIEW_PII' | 'GRANT_CONSENT' | 'CREATE_CASE' | 'ASSIGN_THERAPIST' | 'RESOLVE_CASE';
-  details: string;
-  timestamp: number;
-}
-
 export interface AdminReport {
   id: string;
   title: string;
@@ -200,13 +170,11 @@ export interface AdminUserView {
   region: string;
   age: number;
   gender: Gender;
-  pronouns?: string;
   profession: Profession;
   language: Language;
   lastActive: number;
   sessionCount: number;
   status: 'active' | 'suspended';
-  flags?: string[]; // e.g. "No Phone Contact"
 }
 
 // --- New Features Types ---

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Message, MessageRole, Mood, Session, UserSettings, SessionRating, Badge, BugReport, UserFeedback } from '../types';
 import { ChatMessage } from '../components/ChatMessage';
@@ -6,17 +7,18 @@ import { SessionRatingModal } from '../components/SessionRatingModal';
 import { FeedbackModal } from '../components/FeedbackModal';
 import { checkForCrisis, generateTherapistResponse, generateSpeech, transcribeAudio } from '../services/geminiService';
 import { addMemory, saveSession, trackUserActivity } from '../services/ragService';
-import { saveRating, saveBugReport, saveUserFeedback, detectPII, createSafetyCase } from '../services/dataService';
+import { saveRating, saveBugReport, saveUserFeedback } from '../services/dataService';
 import { MOODS } from '../constants';
 
 interface ChatPageProps {
   settings: UserSettings;
   onUpdateUser: (u: UserSettings) => void;
+  onSignUp: () => void;
 }
 
 const GUEST_LIMIT = 10;
 
-export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) => {
+export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSignUp }) => {
   const [sessionId, setSessionId] = useState(crypto.randomUUID());
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionMood, setSessionMood] = useState<Mood | undefined>(undefined);
@@ -40,9 +42,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Guest Logic
-  const isGuest = settings.id.startsWith('guest-');
+  const isGuest = settings.is_anonymous;
   const userMessageCount = messages.filter(m => m.role === MessageRole.USER).length;
-  const isLimitReached = isGuest && userMessageCount >= GUEST_LIMIT;
+  const isLimitReached = !!isGuest && userMessageCount >= GUEST_LIMIT;
 
   useEffect(() => {
     if (!hasInitialized.current) {
@@ -50,14 +52,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
         if (settings.isAdmin) {
             welcomeText = "Admin System Online. Business Analytics Mode Active.";
         } else {
-            // Soft, personalized welcome
-            welcomeText = `Hello, ${settings.name}. I'm Sakoon. I'm here to listen and support you in a safe, private space. How are you feeling today?`;
-            
-            // Gender preference handling (simulation)
-            if (settings.preferredTherapistGender !== 'No Preference') {
-               // In a real app, this would route to a specific model persona. 
-               // For now, we just acknowledge it gently in the system prompt context later.
-            }
+            welcomeText = `Hello, ${settings.name}. I'm Sukoon. I am here to provide professional, supportive guidance. How can I assist you today?`;
         }
         setMessages([{ id: 'welcome', role: MessageRole.MODEL, text: welcomeText, timestamp: Date.now() }]);
         hasInitialized.current = true;
@@ -83,7 +78,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
           };
           saveSession(settings.id, session);
       }
-  }, [messages, sessionMood, sessionId, settings.id, safeMode]);
+  }, [messages, sessionMood, sessionId, settings.id, safeMode, settings.isAdmin]);
 
   const toggleSafeMode = () => {
       const newState = !safeMode;
@@ -115,15 +110,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
     if (!inputText.trim()) return;
     if (isLimitReached) return; // Prevent send if limit reached
 
-    // --- PII DETECTION ---
-    const piiResult = detectPII(inputText);
-    const finalUserText = piiResult.found ? piiResult.redactedText : inputText;
-    
-    if (piiResult.found && !safeMode && !settings.isAdmin) {
-        // Log safety case quietly
-        createSafetyCase(settings.id, 'PII_EXPOSURE', `User shared potential ${piiResult.type} information.`);
-    }
-
     if (!safeMode) {
         const { updatedUser, newBadge: earnedBadge } = trackUserActivity(settings);
         if (updatedUser.stats.totalActiveDays !== settings.stats.totalActiveDays) {
@@ -135,29 +121,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
         }
     }
 
-    const userMsg: Message = { 
-        id: crypto.randomUUID(), 
-        role: MessageRole.USER, 
-        text: finalUserText, 
-        timestamp: Date.now(),
-        isRedacted: piiResult.found 
-    };
-    
+    const userMsg: Message = { id: crypto.randomUUID(), role: MessageRole.USER, text: inputText, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
-    
-    if (piiResult.found && !safeMode && !settings.isAdmin) {
-        // System Warning
-        const warningMsg: Message = {
-            id: crypto.randomUUID(),
-            role: MessageRole.SYSTEM,
-            text: "We noticed you shared potentially sensitive information. For your safety, we have hidden it. If you want a therapist or admin to view it to provide specific support, please give explicit consent.",
-            timestamp: Date.now()
-        };
-        setMessages(prev => [...prev, warningMsg]);
-        // We still let the AI reply to the context, but based on redacted text
-    }
-
     setIsTyping(true);
 
     if (checkForCrisis(userMsg.text)) {
@@ -172,9 +138,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
         settings.id, history, userMsg.text,
         {
             name: settings.name, age: settings.age, gender: settings.gender, profession: settings.profession,
-            language: settings.preferredLanguage, tone: settings.tonePreference, 
-            aiResponseStyle: settings.aiResponseStyle, // Pass new style
-            isAdmin: settings.isAdmin
+            language: settings.preferredLanguage, tone: settings.tonePreference, isAdmin: settings.isAdmin
         },
         location, settings.therapistStyle, settings.personalityMode,
         settings.memoryEnabled && !safeMode
@@ -225,12 +189,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
   const handleRatingSubmit = (rating: SessionRating) => { saveRating(rating); setShowRating(false); alert("Thank you for your feedback."); };
 
   const handleSubmitBug = async (report: Omit<BugReport, 'id' | 'timestamp' | 'status'>) => {
-      await saveBugReport({ ...report, id: crypto.randomUUID(), timestamp: Date.now(), status: 'new' });
+      await saveBugReport({ ...report, id: crypto.randomUUID(), timestamp: Date.now(), status: 'new' }, settings.is_anonymous);
       alert("Report submitted. Thank you for helping us improve.");
   }
 
   const handleSubmitFeedback = async (feedback: Omit<UserFeedback, 'id' | 'timestamp'>) => {
-      await saveUserFeedback({ ...feedback, id: crypto.randomUUID(), timestamp: Date.now() });
+      await saveUserFeedback({ ...feedback, id: crypto.randomUUID(), timestamp: Date.now() }, settings.is_anonymous);
       alert("Feedback received. We appreciate your thoughts!");
   }
 
@@ -266,7 +230,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser }) =>
                   <div className="font-bold text-sm mb-1">Guest Preview Ended</div>
                   <div className="text-xs text-slate-400">You've reached the message limit. Create a free account to continue.</div>
               </div>
-              <button onClick={() => window.location.reload()} className="px-4 py-2 bg-teal-500 rounded-lg text-xs font-bold hover:bg-teal-600 transition-colors">Sign Up Now</button>
+              <button onClick={onSignUp} className="px-4 py-2 bg-teal-500 rounded-lg text-xs font-bold hover:bg-teal-600 transition-colors">Sign Up Now</button>
           </div>
       )}
 

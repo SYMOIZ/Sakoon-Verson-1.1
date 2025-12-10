@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface EmergencyOverlayProps {
@@ -15,7 +16,7 @@ export const EmergencyOverlay: React.FC<EmergencyOverlayProps> = ({ onClose }) =
         
         <div className="p-6">
             <p className="text-slate-600 mb-6 text-center leading-relaxed">
-                Sakoon is an AI and cannot provide medical care. If you are in pain, feeling hopeless, or want to hurt yourself, please reach out to these free, confidential services immediately.
+                Sukoon is an AI and cannot provide medical care. If you are in pain, feeling hopeless, or want to hurt yourself, please reach out to these free, confidential services immediately.
             </p>
 
             <div className="space-y-3 mb-8">

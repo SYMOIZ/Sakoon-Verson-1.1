@@ -1,9 +1,8 @@
-
 import { Memory, Session, JournalEntry, UserSettings, Badge } from '../types';
 import { updateUserProfile } from './authService';
 
 // We now prefix keys with the userId to ensure isolation
-const getKey = (userId: string, type: 'memories' | 'journal' | 'sessions') => `sakoon_${userId}_${type}`;
+const getKey = (userId: string, type: 'memories' | 'journal' | 'sessions') => `sukoon_${userId}_${type}`;
 
 // --- Memories ---
 export const getMemories = (userId: string): Memory[] => {
@@ -35,108 +34,70 @@ export const deleteMemory = (userId: string, id: string) => {
   saveMemories(userId, filtered);
 };
 
-// --- Sophisticated Context Retrieval Engine ---
+// --- Sophisticated Context Retrieval ---
 
-const STOP_WORDS = new Set([
-  'the', 'and', 'is', 'it', 'to', 'in', 'my', 'i', 'am', 'a', 'of', 'for', 'with', 'that', 'but', 'on', 'at', 'this', 'was', 'have', 'me', 'so', 'be', 'not', 'or', 'an', 'as', 'if', 'by', 'are', 'you', 'can', 'do', 'we'
-]);
-
-// Helper: Generate bi-grams (2-word phrases) for better context matching
-const getBigrams = (text: string): Set<string> => {
-    const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
-    const bigrams = new Set<string>();
-    for (let i = 0; i < words.length - 1; i++) {
-        if (!STOP_WORDS.has(words[i]) && !STOP_WORDS.has(words[i+1])) {
-            bigrams.add(`${words[i]} ${words[i+1]}`);
-        }
-    }
-    return bigrams;
-};
-
-// Helper: Extract potential proper nouns (simple heuristic: capitalized words not at start of sentence)
-const getProperNouns = (text: string): Set<string> => {
-    const nouns = new Set<string>();
-    const matches = text.matchAll(/(?<!^|\.\s)\b[A-Z][a-z]+\b/g);
-    for (const match of matches) {
-        nouns.add(match[0].toLowerCase());
-    }
-    return nouns;
-};
+const normalizeText = (text: string) => text.toLowerCase().replace(/[^\w\s]/g, '');
+const STOP_WORDS = new Set(['the', 'and', 'is', 'it', 'to', 'in', 'my', 'i', 'am', 'a', 'of', 'for', 'with', 'that', 'but', 'on', 'at', 'this', 'was', 'have', 'me', 'so', 'be', 'not', 'or', 'an', 'as', 'if', 'by', 'are', 'you']);
 
 const getTokens = (text: string): Set<string> => {
-    const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+    const words = normalizeText(text).split(/\s+/);
     return new Set(words.filter(w => w.length > 2 && !STOP_WORDS.has(w)));
 };
 
 export const retrieveContext = (userId: string, userQuery: string, conversationContext: string = ""): string => {
   const memories = getMemories(userId);
-  const journals = getJournals(userId);
-  
-  const combinedInput = `${userQuery} ${conversationContext}`;
-  
-  const inputTokens = getTokens(combinedInput);
-  const inputBigrams = getBigrams(combinedInput);
-  const inputNouns = getProperNouns(combinedInput);
+  if (memories.length === 0) return "";
 
-  // --- Process Memories ---
+  const queryTokens = getTokens(userQuery);
+  const contextTokens = getTokens(conversationContext);
+
   const scoredMemories = memories.map(mem => {
     let score = 0;
-    const memContent = mem.content.toLowerCase();
+    const memContentNormalized = normalizeText(mem.content);
     const memTokens = getTokens(mem.content);
-    const memBigrams = getBigrams(mem.content);
 
-    // 1. Exact Noun Matching (Highest Priority for names/places)
-    inputNouns.forEach(noun => {
-        if (memContent.includes(noun)) score += 15;
+    // 1. Exact Query Token Matches (High Weight)
+    // Matches what the user is explicitly asking/talking about right now
+    queryTokens.forEach(token => {
+        if (memTokens.has(token)) score += 10;
+        else if (memContentNormalized.includes(token)) score += 4; // Partial match bonus
     });
 
-    // 2. Bigram Matching (Contextual Phrases)
-    // "New Job" matches "New Job" much stronger than just "Job"
-    inputBigrams.forEach(bg => {
-        if (memBigrams.has(bg)) score += 8;
-    });
-
-    // 3. Keyword Matching
-    inputTokens.forEach(token => {
+    // 2. Context History Matches (Medium Weight)
+    // Matches topics discussed in the last few turns (resolves implicit refs)
+    contextTokens.forEach(token => {
         if (memTokens.has(token)) score += 3;
     });
 
-    // 4. Recency Decay (Linear decay over 30 days)
+    // 3. Recency Scoring (0 to 5 points)
+    // Prioritize memories from the last 7 days, decay linearly
     const daysOld = (Date.now() - mem.createdAt) / (1000 * 60 * 60 * 24);
-    const recencyBonus = Math.max(0, 10 - (daysOld * 0.3)); // 10 points for today, 0 points after ~30 days
-    score += recencyBonus;
+    const recencyScore = Math.max(0, 5 - daysOld);
+    score += recencyScore;
 
-    // 5. Core Memory Sticky Bonus
-    if (mem.isCore) score += 10;
+    // 4. Core Memory Boost (Sticky)
+    // Important facts (names, traumas, major events) get a permanent boost
+    if (mem.isCore) score += 6;
 
     return { ...mem, score };
   });
 
-  // --- Process Recent Journals (Last 3 days only) ---
-  const recentJournals = journals
-    .filter(j => (Date.now() - j.timestamp) < (1000 * 60 * 60 * 24 * 3)) // Last 3 days
-    .map(j => ({
-        content: `Journal Entry (${new Date(j.timestamp).toLocaleDateString()}): ${j.content} [Mood: ${j.mood}]`,
-        score: 5 // Base score for being recent
-    }));
-
-  // Sort and Slice
-  const topMemories = scoredMemories
-    .filter(m => m.score > 5)
+  // Filter: Keep memories that have at least some relevance (score > 5)
+  // This threshold ensures we don't return random memories just because they are 'Core' if they are totally irrelevant.
+  // (A Core memory with 0 keyword matches would have score ~6-11 depending on recency. 
+  // A relevant recent non-core memory would be 10+5 = 15).
+  
+  const relevant = scoredMemories
+    .filter(m => m.score >= 5) 
     .sort((a,b) => b.score - a.score)
-    .slice(0, 5); // Top 5 relevant memories
+    .slice(0, 6); // Keep top 6 most relevant
 
-  const contextParts = [];
+  if (relevant.length === 0) return "";
 
-  if (topMemories.length > 0) {
-      contextParts.push(`[LONG-TERM MEMORY]:\n${topMemories.map(m => `- ${m.content}`).join('\n')}`);
-  }
-
-  if (recentJournals.length > 0) {
-      contextParts.push(`[RECENT JOURNAL ENTRIES]:\n${recentJournals.map(j => `- ${j.content}`).join('\n')}`);
-  }
-
-  return contextParts.join('\n\n');
+  return `
+[RECALLED MEMORIES - Prioritize these details if relevant]:
+${relevant.map(m => `- ${m.content}`).join('\n')}
+`;
 };
 
 // --- Sessions ---

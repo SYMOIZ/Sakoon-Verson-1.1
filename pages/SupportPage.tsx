@@ -6,7 +6,7 @@ export const SupportPage: React.FC = () => {
        <div className="text-center mb-12">
             <h1 className="text-4xl font-sans font-bold text-slate-800 dark:text-white mb-4">Help Us Heal</h1>
             <p className="text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
-                Sakoon AI is on a mission to make emotional support accessible, private, and stigma-free for everyone, everywhere.
+                Sukoon AI is on a mission to make emotional support accessible, private, and stigma-free for everyone, everywhere.
             </p>
        </div>
 
@@ -49,7 +49,7 @@ export const SupportPage: React.FC = () => {
        <div className="bg-slate-50 dark:bg-navy-950 p-8 rounded-3xl text-center">
             <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">Transparency</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm max-w-lg mx-auto">
-                Sakoon AI is a technology demonstration. We are not a licensed medical provider. All funds go directly to hosting costs and further development of the AI models.
+                Sukoon AI is a technology demonstration. We are not a licensed medical provider. All funds go directly to hosting costs and further development of the AI models.
             </p>
        </div>
     </div>

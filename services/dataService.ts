@@ -1,99 +1,8 @@
 
-
-import { Therapist, AdminStats, AdminUserView, AdminAlert, AdminReport, TherapyNote, BugReport, UserFeedback, CheckInEvent, SafetyCase, AuditLog, Message } from '../types';
+import { Therapist, AdminStats, AdminUserView, AdminAlert, AdminReport, TherapyNote, BugReport, UserFeedback, CheckInEvent } from '../types';
 import { supabase } from './supabaseClient';
 
-const safeUserId = (userId: string) => userId.startsWith('guest-') ? null : userId;
-
-// --- MOCK STORAGE (Simulating DB Tables for Prototype) ---
-let MOCK_SAFETY_CASES: SafetyCase[] = [];
-let MOCK_AUDIT_LOGS: AuditLog[] = [];
-
-// --- PII DETECTION LOGIC ---
-export const detectPII = (text: string): { found: boolean, redactedText: string, type?: string } => {
-    let redacted = text;
-    let found = false;
-    let type = undefined;
-
-    // Phone Numbers (Rough international/local regex)
-    // Matches: +92..., 03..., 00..., 123-456...
-    const phoneRegex = /(?:(?:\+|00)[1-9]\d{0,3}[\s-.]?)?(?:(?:\d{1,4})[\s-.]?){2,}\d{2,}/g;
-    
-    // Emails
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-
-    // Bank/Card (Simple 16 digit check)
-    const cardRegex = /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/g;
-
-    if (text.match(phoneRegex)) {
-        // Filter out short numbers like years "2024" or small integers "100" by checking length
-        const matches = text.match(phoneRegex);
-        if (matches && matches.some(m => m.replace(/[^0-9]/g, '').length > 7)) {
-            redacted = redacted.replace(phoneRegex, '[REDACTED PHONE]');
-            found = true;
-            type = 'PHONE';
-        }
-    }
-
-    if (text.match(emailRegex)) {
-        redacted = redacted.replace(emailRegex, '[REDACTED EMAIL]');
-        found = true;
-        type = type ? `${type}, EMAIL` : 'EMAIL';
-    }
-
-    if (text.match(cardRegex)) {
-        redacted = redacted.replace(cardRegex, '[REDACTED FINANCIAL]');
-        found = true;
-        type = type ? `${type}, FINANCIAL` : 'FINANCIAL';
-    }
-
-    return { found, redactedText: redacted, type };
-};
-
-export const createSafetyCase = async (userId: string, category: SafetyCase['category'], summary: string) => {
-    const newCase: SafetyCase = {
-        id: `C-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
-        userId,
-        category,
-        aiSummary: summary,
-        status: 'active',
-        timestamp: Date.now()
-    };
-    MOCK_SAFETY_CASES.unshift(newCase);
-    
-    // Log creation
-    logAudit('system', 'CREATE_CASE', `Created case ${newCase.id} for user ${userId} due to ${category}`);
-    
-    // Persist to supabase if needed, currently using memory for prototype session
-    // In real app: await supabase.from('safety_cases').insert(newCase);
-};
-
-export const getSafetyCases = async (): Promise<SafetyCase[]> => {
-    return MOCK_SAFETY_CASES;
-};
-
-export const resolveSafetyCase = async (caseId: string) => {
-    const c = MOCK_SAFETY_CASES.find(c => c.id === caseId);
-    if (c) {
-        c.status = 'resolved';
-        logAudit('admin', 'RESOLVE_CASE', `Resolved case ${caseId}`);
-    }
-};
-
-export const logAudit = (actorId: string, action: AuditLog['action'], details: string) => {
-    const log: AuditLog = {
-        id: crypto.randomUUID(),
-        actorId,
-        action,
-        details,
-        timestamp: Date.now()
-    };
-    MOCK_AUDIT_LOGS.unshift(log);
-};
-
-export const getAuditLogs = async (): Promise<AuditLog[]> => {
-    return MOCK_AUDIT_LOGS;
-};
+const safeUserId = (userId: string, is_anonymous?: boolean) => is_anonymous ? null : userId;
 
 // --- DIAGNOSTICS ---
 export const checkConnection = async (): Promise<{ status: 'connected' | 'error', details?: any }> => {
@@ -137,36 +46,24 @@ export const getAdminStats = async (): Promise<AdminStats> => {
 };
 
 export const getTherapists = async (): Promise<Therapist[]> => {
-    // In a real app, fetch from DB. Here we return mock data + any saved ones.
-    const MOCK_THERAPISTS: Therapist[] = [
-        {
-            id: 't1',
-            name: 'Syed Moiz',
-            specialty: 'CBT Specialist',
-            tags: ['Iqra University', 'Computer Science', 'Anxiety'],
-            location: 'Remote / Karachi',
-            languages: ['English', 'Urdu'],
-            experience: 5,
-            bio: 'Specializing in student anxiety and exam stress. I use structured CBT techniques to help you regain focus.',
-            bookingUrl: '#',
-            availableSlots: [{day: 'Mon', time: '10:00 AM', duration: '45m'}],
-            publicListing: false
-        },
-        {
-            id: 't2',
-            name: 'Kunal Kumar',
-            specialty: 'Counseling Psychologist',
-            tags: ['Counseling', 'Hindi', 'Urdu', 'Depression'],
-            location: 'Remote',
-            languages: ['Hindi', 'Urdu', 'English'],
-            experience: 4,
-            bio: 'Warm, empathetic listening for those feeling disconnected or low. I provide a safe space to vent.',
-            bookingUrl: '#',
-            availableSlots: [{day: 'Wed', time: '2:00 PM', duration: '45m'}],
-            publicListing: false
-        }
-    ];
-    return MOCK_THERAPISTS;
+    try {
+        const { data, error } = await supabase.from('therapists').select('*');
+        if (error || !data) return [];
+        return data.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            specialty: t.specialty ? t.specialty : (t.specialties ? t.specialties[0] : ''),
+            location: t.location || t.region,
+            languages: t.languages || [],
+            experience: t.experience,
+            bio: t.bio,
+            imageUrl: t.image_url,
+            bookingUrl: t.booking_url,
+            availableSlots: t.available_slots || [],
+            contactBusiness: t.contact_business,
+            publicListing: t.public_listing
+        }));
+    } catch (e) { return []; }
 };
 
 export const saveTherapist = async (therapist: Therapist) => {
@@ -194,15 +91,17 @@ export const deleteTherapist = async (id: string) => {
 // --- DATA COLLECTION ---
 
 export const saveCheckInEvent = async (event: CheckInEvent) => {
+    // Only save if user is logged in (or handle guest logic if you want to track anon stats)
+    // For now, we allow it to fail silently if no auth context, or we rely on RLS allowing anon inserts
     await supabase.from('analytics_events').insert({
         event_type: event.event,
         payload: { questionId: event.questionId, response: event.response }
     });
 };
 
-export const saveUserFeedback = async (feedback: UserFeedback) => {
+export const saveUserFeedback = async (feedback: UserFeedback, is_anonymous?: boolean) => {
     await supabase.from('feedback').insert({
-        user_id: safeUserId(feedback.userId),
+        user_id: safeUserId(feedback.userId, is_anonymous),
         type: 'feedback',
         category: feedback.category,
         message: feedback.note,
@@ -210,9 +109,9 @@ export const saveUserFeedback = async (feedback: UserFeedback) => {
     });
 };
 
-export const saveBugReport = async (bug: BugReport) => {
+export const saveBugReport = async (bug: BugReport, is_anonymous?: boolean) => {
     await supabase.from('feedback').insert({
-        user_id: safeUserId(bug.userId),
+        user_id: safeUserId(bug.userId, is_anonymous),
         type: 'bug',
         category: bug.issueType,
         message: bug.description,
@@ -260,7 +159,7 @@ export const getUserFeedback = async (): Promise<UserFeedback[]> => {
 export const getTherapyNotes = async (userId?: string): Promise<TherapyNote[]> => {
     try {
         let query = supabase.from('therapy_notes').select('*');
-        if (userId && !userId.startsWith('guest-')) {
+        if (userId) { // anonymous users have real IDs
             query = query.eq('user_id', userId);
         }
         const { data } = await query;
@@ -281,7 +180,6 @@ export const getTherapyNotes = async (userId?: string): Promise<TherapyNote[]> =
 }
 
 export const saveTherapyNote = async (note: TherapyNote) => {
-    if (note.userId.startsWith('guest-')) return;
     await supabase.from('therapy_notes').insert({
         user_id: note.userId,
         title: note.title,
@@ -305,13 +203,11 @@ export const getAdminUsers = async (): Promise<AdminUserView[]> => {
             region: p.region,
             age: p.age,
             gender: p.gender,
-            pronouns: p.metadata?.pronouns,
             profession: p.profession,
             language: p.preferred_language,
             lastActive: new Date(p.last_active_at || Date.now()).getTime(),
             sessionCount: 0,
-            status: 'active',
-            flags: p.metadata?.preventPhoneContact ? ['No Phone'] : []
+            status: 'active'
         }));
     } catch (e) { return []; }
 };

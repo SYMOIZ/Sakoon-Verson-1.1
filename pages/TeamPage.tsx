@@ -5,7 +5,7 @@ export const TeamPage: React.FC = () => {
     <div className="p-6 md:p-12 overflow-y-auto h-full max-w-4xl mx-auto text-center">
       <h1 className="text-4xl font-sans font-bold text-slate-800 dark:text-white mb-6">Our Team</h1>
       <p className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-16">
-          The passionate minds behind Sakoon AI, working together to make mental wellness accessible to all.
+          The passionate minds behind Sukoon AI, working together to make mental wellness accessible to all.
       </p>
 
       <div className="grid md:grid-cols-3 gap-8 mb-20">
@@ -17,7 +17,7 @@ export const TeamPage: React.FC = () => {
       <div className="bg-slate-50 dark:bg-navy-950 p-10 rounded-3xl">
           <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Final Year Project</h2>
           <p className="text-slate-500 dark:text-slate-400">
-              Sakoon AI is a Final Year Project Prototype created with dedication by:
+              Sukoon AI is a Final Year Project Prototype created with dedication by:
           </p>
           <div className="mt-6 flex flex-col gap-2 font-medium text-slate-700 dark:text-slate-300">
               <span>Syed Moiz</span>

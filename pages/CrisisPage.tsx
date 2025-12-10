@@ -26,7 +26,7 @@ export const CrisisPage: React.FC = () => {
           </div>
 
           <p className="text-sm text-slate-400">
-              Sakoon AI is an automated system and cannot provide medical care or emergency intervention.
+              Sukoon AI is an automated system and cannot provide medical care or emergency intervention.
           </p>
       </div>
     </div>

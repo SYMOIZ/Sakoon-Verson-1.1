@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getTherapists } from '../services/dataService';
 import { Therapist } from '../types';
@@ -18,7 +19,7 @@ export const TherapistDirectory: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-3xl font-sans font-bold text-slate-800 dark:text-white mb-2">Find a Professional</h1>
         <p className="text-slate-500 dark:text-slate-400">
-            Connect with licensed human therapists for deeper, clinical support. Sakoon AI is not a medical service.
+            Connect with licensed human therapists for deeper, clinical support. Sukoon AI is not a medical service.
         </p>
       </div>
 

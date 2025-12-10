@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserSettings, TherapistStyle, PersonalityMode, Gender, Profession, TonePreference, Language, AIResponseStyle } from '../types';
+import { UserSettings, TherapistStyle, PersonalityMode, Gender, Profession, TonePreference, Language } from '../types';
 import { deleteTodayData, deleteAllData, deleteDateData } from '../services/ragService';
 import { checkConnection } from '../services/dataService';
 
@@ -10,7 +10,6 @@ interface SettingsPageProps {
 
 const LANGUAGES: Language[] = ['English', 'Urdu', 'Roman Urdu', 'Sindhi', 'Pashto', 'Siraiki', 'Arabic', 'Spanish'];
 const TONES: TonePreference[] = ['Cute', 'Mature', 'Friendly', 'Soft', 'Calm', 'Direct'];
-const AI_STYLES: AIResponseStyle[] = ['Empathetic', 'Direct', 'Analytical'];
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings }) => {
   const [deleteDate, setDeleteDate] = useState('');
@@ -99,51 +98,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Therapy Mode</h2>
             
             <div className="mb-6">
-                <div className="text-sm font-semibold text-slate-500 mb-2">AI Personality Type</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {AI_STYLES.map((style) => (
-                        <button
-                            key={style}
-                            onClick={() => onUpdateSettings({...settings, aiResponseStyle: style})}
-                            className={`p-3 rounded-xl border text-center transition-all capitalize font-medium ${
-                                settings.aiResponseStyle === style 
-                                ? 'border-teal-400 bg-teal-50 dark:bg-navy-700 text-teal-600 dark:text-teal-300' 
-                                : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'
-                            }`}
-                        >
-                            {style}
-                            <div className="text-[10px] opacity-70 font-normal">
-                                {style === 'Empathetic' ? 'Warm, Validating' : style === 'Direct' ? 'Action-Oriented' : 'Logical, Objective'}
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="mb-6">
-                <div className="text-sm font-semibold text-slate-500 mb-2">Internal Personality (Base)</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {['introvert', 'extrovert'].map((mode) => (
-                        <button
-                            key={mode}
-                            onClick={() => onUpdateSettings({...settings, personalityMode: mode as PersonalityMode})}
-                            className={`p-3 rounded-xl border text-center transition-all capitalize font-medium ${
-                                settings.personalityMode === mode 
-                                ? 'border-lavender-400 bg-lavender-50 dark:bg-navy-700 text-lavender-600 dark:text-lavender-300' 
-                                : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'
-                            }`}
-                        >
-                            {mode}
-                            <div className="text-[10px] opacity-70 font-normal">
-                                {mode === 'introvert' ? 'Reflective, Calmer' : 'Expressive, Active'}
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div>
-                <div className="text-sm font-semibold text-slate-500 mb-2">Therapeutic Approach</div>
+                <div className="text-sm font-semibold text-slate-500 mb-2">Approach Style</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {['gentle', 'cbt', 'mindfulness'].map((style) => (
                         <button
@@ -160,6 +115,28 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     ))}
                 </div>
             </div>
+
+            <div>
+                <div className="text-sm font-semibold text-slate-500 mb-2">Internal Personality (Base)</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {['introvert', 'extrovert'].map((mode) => (
+                        <button
+                            key={mode}
+                            onClick={() => onUpdateSettings({...settings, personalityMode: mode as PersonalityMode})}
+                            className={`p-3 rounded-xl border text-center transition-all capitalize font-medium ${
+                                settings.personalityMode === mode 
+                                ? 'border-teal-400 bg-teal-50 dark:bg-navy-700 text-teal-600 dark:text-teal-300' 
+                                : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'
+                            }`}
+                        >
+                            {mode}
+                            <div className="text-[10px] opacity-70 font-normal">
+                                {mode === 'introvert' ? 'Reflective, Calmer' : 'Expressive, Active'}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            </div>
         </section>
 
         {/* Memory & Privacy */}
@@ -169,7 +146,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <div className="font-medium text-slate-800 dark:text-slate-200">Memory System</div>
-                    <div className="text-sm text-slate-500">Allow Sakoon to remember context.</div>
+                    <div className="text-sm text-slate-500">Allow Sukoon to remember context.</div>
                 </div>
                 <div 
                     onClick={() => onUpdateSettings({...settings, memoryEnabled: !settings.memoryEnabled})}

@@ -1,5 +1,5 @@
 
-# Sakoon AI Backend - Final Implementation
+# Sukoon AI Backend - Final Implementation
 
 This folder contains the SQL scripts required to set up the complete backend on Supabase.
 

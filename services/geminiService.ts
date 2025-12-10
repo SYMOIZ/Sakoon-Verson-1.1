@@ -1,27 +1,11 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { SAKOON_SYSTEM_PROMPT, CRISIS_KEYWORDS } from "../constants";
+import { SUKOON_SYSTEM_PROMPT, CRISIS_KEYWORDS } from "../constants";
 import { retrieveContext } from "./ragService";
-import { TherapistStyle, PersonalityMode, Gender, Profession, TonePreference, Language, AIResponseStyle } from "../types";
+import { TherapistStyle, PersonalityMode, Gender, Profession, TonePreference, Language } from "../types";
 
-export type CrisisType = 'SELF_HARM' | 'HARM_TO_OTHERS' | 'EMOTIONAL_DISTRESS' | null;
-
-const SELF_HARM_KEYWORDS = ["kill myself", "suicide", "want to die", "end my life", "done living", "cut myself", "no reason to live", "better off dead"];
-const HARM_OTHERS_KEYWORDS = ["kill him", "kill her", "kill them", "hurt someone", "violence", "attack", "murder", "beat him", "beat her"];
-const DISTRESS_KEYWORDS = ["empty", "cannot control", "depressed", "unstable", "broken", "sad", "hopeless", "mentally unstable", "panic", "falling apart"];
-
-export const detectCrisisType = (text: string): CrisisType => {
-  const lowerText = text.toLowerCase();
-  
-  if (SELF_HARM_KEYWORDS.some(k => lowerText.includes(k))) return 'SELF_HARM';
-  if (HARM_OTHERS_KEYWORDS.some(k => lowerText.includes(k))) return 'HARM_TO_OTHERS';
-  if (DISTRESS_KEYWORDS.some(k => lowerText.includes(k))) return 'EMOTIONAL_DISTRESS';
-  
-  return null;
-};
-
-// Kept for backward compatibility if needed, but detectCrisisType is preferred
 export const checkForCrisis = (text: string): boolean => {
-  return detectCrisisType(text) !== null;
+  const lowerText = text.toLowerCase();
+  return CRISIS_KEYWORDS.some(keyword => lowerText.includes(keyword));
 };
 
 let genAI: GoogleGenAI | null = null;
@@ -31,32 +15,6 @@ const getAI = () => {
     genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
   return genAI;
-};
-
-// Generates a sanitized summary for admin logs
-export const generateSafetySummary = async (userText: string, category: string): Promise<string> => {
-    const ai = getAI();
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `
-                You are a safety officer. Write a ONE-SENTENCE, professional, neutral summary of the following user message for an admin log.
-                Category: ${category}
-                
-                Rules:
-                - Do NOT use the exact words of the user.
-                - Do NOT describe specific methods of harm.
-                - Do NOT include PII (names, places).
-                - Be objective and clinical.
-                - Example: "User expressed severe hopelessness and suicidal ideation."
-                
-                User Message: "${userText}"
-            `,
-        });
-        return response.text.trim();
-    } catch (e) {
-        return `User flagged for ${category} (Auto-log)`;
-    }
 };
 
 interface ChatResponse {
@@ -73,7 +31,6 @@ const buildSystemInstruction = (
       profession: Profession;
       language: Language;
       tone: TonePreference;
-      aiResponseStyle: AIResponseStyle;
       isAdmin?: boolean;
   },
   style: TherapistStyle,
@@ -93,43 +50,6 @@ const buildSystemInstruction = (
   - Preferred Language: ${userProfile.language}
   `;
 
-  // --- NEW PERSONALITY ENGINE ---
-  let personalityInstruction = "";
-  switch(userProfile.aiResponseStyle) {
-      case 'Empathetic':
-          personalityInstruction = `
-          CORE PERSONALITY: EMPATHETIC
-          - Prioritize validation and emotional mirroring.
-          - Use warm, comforting language.
-          - Focus on feelings before solutions.
-          - Phrase suggestions as gentle invitations (e.g., "I wonder if...").
-          - Goal: Make the user feel deeply heard and understood.
-          `;
-          break;
-      case 'Direct':
-          personalityInstruction = `
-          CORE PERSONALITY: DIRECT
-          - Be concise, clear, and action-oriented.
-          - Avoid fluff or excessive validation.
-          - Focus on practical steps and solutions.
-          - Use bullet points if listing ideas.
-          - Goal: Help the user solve the problem efficiently.
-          `;
-          break;
-      case 'Analytical':
-          personalityInstruction = `
-          CORE PERSONALITY: ANALYTICAL
-          - Focus on logic, patterns, and objective observation.
-          - Help the user analyze *why* they might feel this way.
-          - Use precise language.
-          - Break down complex emotions into manageable parts.
-          - Goal: Help the user gain intellectual clarity and insight.
-          `;
-          break;
-      default: 
-          personalityInstruction = "CORE PERSONALITY: EMPATHETIC";
-  }
-
   const multilingualRules = `
   MULTILINGUAL RULES:
   - Detect the language of the user's message automatically.
@@ -137,31 +57,17 @@ const buildSystemInstruction = (
   - If they mix languages (e.g. English + Urdu), reply in the dominant language.
   - Support: English, Urdu, Roman Urdu, Sindhi, Pashto, Siraiki, Arabic, Spanish.
   `;
-  
-  // Improved Memory Instruction
-  const contextRules = memoryContext ? `
-  RECALL PROTOCOL:
-  The following is retrieved context about the user from previous conversations or journals. 
-  - Use this information to make the conversation feel continuous and personal.
-  - If a specific name, event, or feeling is mentioned in [LONG-TERM MEMORY], reference it gently if relevant.
-  - If [RECENT JOURNAL ENTRIES] are provided, acknowledge their recent mood or reflections without being creepy.
-  
-  RETRIEVED CONTEXT:
-  ${memoryContext}
-  ` : "";
 
   return `
-  ${SAKOON_SYSTEM_PROMPT}
+  ${SUKOON_SYSTEM_PROMPT}
 
   CURRENT OPERATION PARAMETER:
   ${mode}
 
   ${userProfile.isAdmin ? '' : personalContext}
-  ${userProfile.isAdmin ? '' : personalityInstruction}
   ${userProfile.isAdmin ? '' : multilingualRules}
-  ${userProfile.isAdmin ? '' : contextRules}
 
-  ${userProfile.isAdmin ? '' : `AI INTERNAL THINKING (Do not output): Analyze emotional tone, stress indicators.`}
+  ${userProfile.isAdmin ? '' : `AI INTERNAL THINKING (Do not output): Analyze emotional tone, stress indicators. ${memoryContext}`}
   `;
 }
 
@@ -176,7 +82,6 @@ export const generateTherapistResponse = async (
       profession: Profession;
       language: Language;
       tone: TonePreference;
-      aiResponseStyle: AIResponseStyle;
       isAdmin?: boolean;
       deepMode?: boolean;
   },

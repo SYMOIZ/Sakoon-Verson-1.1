@@ -23,7 +23,7 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ userId }) => {
   return (
     <div className="p-6 md:p-12 overflow-y-auto h-full">
       <h1 className="text-3xl font-serif text-slate-800 dark:text-white mb-2">Long-Term Memory</h1>
-      <p className="text-slate-500 dark:text-slate-400 mb-8">Things Amal remembers about you to provide better support. You are in control.</p>
+      <p className="text-slate-500 dark:text-slate-400 mb-8">Things Sukoon remembers about you to provide better support. You are in control.</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {memories.map(mem => (
@@ -47,7 +47,7 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ userId }) => {
 
       {memories.length === 0 && (
          <div className="bg-slate-100 dark:bg-navy-800 rounded-xl p-8 text-center text-slate-500">
-           Amal hasn't stored any long-term memories yet. As you chat, key details will appear here.
+           Sukoon hasn't stored any long-term memories yet. As you chat, key details will appear here.
          </div>
       )}
     </div>

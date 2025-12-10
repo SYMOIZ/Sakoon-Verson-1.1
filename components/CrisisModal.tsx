@@ -18,7 +18,7 @@ export const CrisisModal: React.FC<CrisisModalProps> = ({ onClose }) => {
           </div>
           
           <p className="text-slate-600 mb-6">
-            It sounds like you might be going through a very difficult time. Amal is an AI and cannot provide emergency help. Please reach out to a human who can help you stay safe.
+            It sounds like you might be going through a very difficult time. Sukoon is an AI and cannot provide emergency help. Please reach out to a human who can help you stay safe.
           </p>
 
           <div className="space-y-3 mb-6">
