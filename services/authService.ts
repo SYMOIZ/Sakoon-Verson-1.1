@@ -1,7 +1,8 @@
 
-import { UserSettings, Badge, Gender, Profession, TonePreference, Language, Religion } from '../types';
+import { UserSettings, Badge, Gender, Profession, TonePreference, Language, TherapistApplication } from '../types';
 import { supabase } from './supabaseClient';
 import { User, Session } from '@supabase/supabase-js';
+import { saveTherapistApplication } from './dataService';
 
 const INITIAL_BADGES: Badge[] = [
     { id: 'day-1', label: '1 Day', description: 'You showed up for yourself today.', icon: '🌱', requiredDays: 1 }
@@ -13,11 +14,24 @@ interface RegisterData {
     name: string;
     age: number;
     region: string;
-    gender: Gender;
-    religion: Religion;
-    profession: Profession;
+    gender: string;
+    profession: string;
     language: Language;
     tone: TonePreference;
+    captchaToken?: string; // Added CAPTCHA support
+}
+
+interface RegisterTherapistData {
+    fullName: string;
+    email: string;
+    phone: string;
+    password: string;
+    yearsExperience: number;
+    specialization: string;
+    licenseNumber: string;
+    cvFile: File | null;
+    degreeFile: File | null;
+    captchaToken?: string; // Added CAPTCHA support
 }
 
 export const signInAnonymously = async (): Promise<UserSettings | null> => {
@@ -35,10 +49,11 @@ export const signInAnonymously = async (): Promise<UserSettings | null> => {
             email: user.email || 'guest@sukoon.ai',
             name: 'Guest',
             is_anonymous: true,
-            age: 25, region: 'Global', gender: 'Other', profession: 'Other', religion: 'Other',
+            age: 25, region: 'Global', gender: 'Other', profession: 'Other',
             preferredLanguage: 'English', tonePreference: 'Calm',
             voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
             therapistStyle: 'gentle', personalityMode: 'introvert', darkMode: false, isAdmin: false,
+            role: 'patient', accountStatus: 'active',
             stats: { totalActiveDays: 1, lastActiveDate: new Date().toLocaleDateString('en-CA'), badges: [] }
         };
 
@@ -48,7 +63,6 @@ export const signInAnonymously = async (): Promise<UserSettings | null> => {
             age: guestSettings.age,
             region: guestSettings.region,
             gender: guestSettings.gender,
-            religion: guestSettings.religion,
             profession: guestSettings.profession,
             preferred_language: guestSettings.preferredLanguage,
             tone_preference: guestSettings.tonePreference,
@@ -63,6 +77,91 @@ export const signInAnonymously = async (): Promise<UserSettings | null> => {
     }
 }
 
+export const registerTherapist = async (data: RegisterTherapistData): Promise<{ user: UserSettings | null, applicationId: string | null, error: string | null }> => {
+    try {
+        // 1. Create Auth User with CAPTCHA
+        const cleanEmail = data.email.trim();
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: data.password,
+            options: { 
+                data: { name: data.fullName, role: 'therapist' },
+                captchaToken: data.captchaToken // Pass CAPTCHA
+            }
+        });
+
+        if (signUpError) {
+             if (signUpError.message.includes("already registered")) {
+                return { user: null, applicationId: null, error: "Email already registered." };
+            }
+            throw signUpError;
+        }
+
+        const user = signUpData.user;
+        if (!user) throw new Error("User creation failed.");
+
+        // 2. Upload Files to Supabase Storage
+        let cvPath = 'Not Provided';
+        let degreePath = 'Not Provided';
+
+        if (data.cvFile) {
+            const fileName = `${user.id}/${Date.now()}_CV_${data.cvFile.name.replace(/\s+/g, '_')}`;
+            const { error: uploadError } = await supabase.storage.from('therapist-documents').upload(fileName, data.cvFile);
+            if (!uploadError) cvPath = fileName;
+            else console.error("CV Upload Failed", uploadError);
+        }
+
+        if (data.degreeFile) {
+            const fileName = `${user.id}/${Date.now()}_Degree_${data.degreeFile.name.replace(/\s+/g, '_')}`;
+            const { error: uploadError } = await supabase.storage.from('therapist-documents').upload(fileName, data.degreeFile);
+            if (!uploadError) degreePath = fileName;
+            else console.error("Degree Upload Failed", uploadError);
+        }
+
+        // 3. Prepare Application Data
+        const appId = crypto.randomUUID();
+        const application: TherapistApplication = {
+            id: appId,
+            userId: user.id,
+            fullName: data.fullName,
+            email: cleanEmail,
+            phone: data.phone,
+            yearsExperience: data.yearsExperience,
+            specialization: data.specialization,
+            licenseNumber: data.licenseNumber,
+            cvFileName: cvPath,
+            degreeFileName: degreePath,
+            status: 'pending',
+            submittedAt: Date.now()
+        };
+
+        // 4. Save Application & Update User Metadata
+        await saveTherapistApplication(application);
+
+        // 5. Return Pending User Object
+        const therapistUser: UserSettings = {
+            id: user.id,
+            email: cleanEmail,
+            name: data.fullName,
+            is_anonymous: false,
+            // Defaults for profile
+            age: 30, region: 'Unknown', gender: 'Other', profession: 'Working Professional',
+            preferredLanguage: 'English', tonePreference: 'Calm',
+            voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+            therapistStyle: 'gentle', personalityMode: 'introvert', 
+            darkMode: false, isAdmin: false,
+            role: 'therapist',
+            accountStatus: 'pending', // IMPORTANT: LOCKED STATE
+            stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
+        };
+
+        return { user: therapistUser, applicationId: appId, error: null };
+
+    } catch (e: any) {
+        return { user: null, applicationId: null, error: e.message || "Registration failed." };
+    }
+};
+
 export const registerUser = async (data: RegisterData): Promise<{ user: UserSettings | null, error: string | null }> => {
     try {
         const cleanEmail = data.email.trim();
@@ -75,30 +174,51 @@ export const registerUser = async (data: RegisterData): Promise<{ user: UserSett
         let authResponseSession: Session | null = null;
         
         if (isAnonymous) {
+            // Upgrade anonymous user
             const { data: updateData, error: updateError } = await supabase.auth.updateUser({
                 email: cleanEmail,
                 password: data.password,
-                data: { name: cleanName }
+                data: { 
+                    name: cleanName, 
+                    role: 'patient',
+                    age: data.age,
+                    region: data.region,
+                    gender: data.gender,
+                    profession: data.profession,
+                    language: data.language,
+                    tone: data.tone
+                }
             });
             if (updateError) {
                 if (updateError.message.includes("already registered") || updateError.message.includes("same value")) {
                     return { user: null, error: "This email is already registered. Please log in." };
                 }
-                // FIX: Removed custom CAPTCHA error handling to allow Supabase to manage it.
                 throw updateError;
             }
             authResponseUser = updateData.user;
             const { data: newSessionData } = await supabase.auth.getSession();
             authResponseSession = newSessionData.session;
         } else {
+            // New Signup with CAPTCHA
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email: cleanEmail,
                 password: data.password,
-                options: { data: { name: cleanName } }
+                options: { 
+                    data: { 
+                        name: cleanName, 
+                        role: 'patient',
+                        age: data.age,
+                        region: data.region,
+                        gender: data.gender,
+                        profession: data.profession,
+                        language: data.language,
+                        tone: data.tone
+                    },
+                    captchaToken: data.captchaToken // Pass CAPTCHA
+                }
             });
 
             if (signUpError) {
-                // FIX: Removed custom CAPTCHA error handling to allow Supabase to manage it.
                 throw signUpError;
             }
             
@@ -107,7 +227,9 @@ export const registerUser = async (data: RegisterData): Promise<{ user: UserSett
         }
 
         if (authResponseUser && !authResponseSession) {
-            return { user: null, error: "Your account could not be created at this time. Please contact support if the problem persists." };
+            // Usually indicates Email Confirmation is enabled on Supabase.
+            // We return the user object but alert them to check email.
+            return { user: null, error: "Account created! Please check your email to confirm." };
         }
         
         if (!authResponseUser || !authResponseSession) {
@@ -122,44 +244,30 @@ export const registerUser = async (data: RegisterData): Promise<{ user: UserSett
             age: data.age,
             region: data.region,
             gender: data.gender,
-            religion: data.religion,
             profession: data.profession,
             preferredLanguage: data.language,
             tonePreference: data.tone,
             voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
             therapistStyle: 'gentle', personalityMode: 'introvert', darkMode: false, isAdmin: false,
+            role: 'patient', accountStatus: 'active',
             stats: { totalActiveDays: 1, lastActiveDate: new Date().toLocaleDateString('en-CA'), badges: INITIAL_BADGES }
         };
 
-        const { error: dbError } = await supabase.from('users').update({
-            display_name: newUser.name,
-            age: newUser.age,
-            region: newUser.region,
-            gender: newUser.gender,
-            religion: newUser.religion,
-            profession: newUser.profession,
-            preferred_language: newUser.preferredLanguage,
-            tone_preference: newUser.tonePreference,
-            metadata: newUser.stats
-        }).eq('id', newUser.id);
-
-        if (dbError) {
-            console.error("User DB Update Failed", dbError);
-        }
+        // Note: The database trigger 'handle_new_user' (in schema.sql) automatically populates public.users
+        // We only need to return the user object here.
 
         return { user: newUser, error: null };
     } catch (e: any) {
-        // FIX: Removed custom CAPTCHA error handling to allow Supabase to manage it.
         return { user: null, error: e.message || "An unexpected error occurred." };
     }
 };
 
-export const loginUser = async (email: string, password: string): Promise<UserSettings | null> => {
+export const loginUser = async (email: string, password: string): Promise<{ user: UserSettings | null, error: string | null }> => {
     try {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error || !data.user) {
             if (error) console.error("Login error:", error.message);
-            return null;
+            return { user: null, error: error?.message || "Invalid login credentials." };
         }
 
         const { data: profile } = await supabase
@@ -169,41 +277,57 @@ export const loginUser = async (email: string, password: string): Promise<UserSe
             .single();
 
         if (!profile) {
+            // Fallback if profile doesn't exist yet (e.g. legacy user)
             return {
-                id: data.user.id,
-                email: data.user.email || '',
-                name: 'User',
-                is_anonymous: data.user.is_anonymous,
-                age: 0, region: '', gender: 'Other', profession: 'Other',
-                religion: 'Other',
-                preferredLanguage: 'English', tonePreference: 'Soft',
-                voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
-                therapistStyle: 'gentle', personalityMode: 'introvert',
-                darkMode: false, isAdmin: false,
-                stats: { totalActiveDays: 0, lastActiveDate: '', badges: INITIAL_BADGES }
+                user: {
+                    id: data.user.id,
+                    email: data.user.email || '',
+                    name: 'User',
+                    is_anonymous: data.user.is_anonymous,
+                    age: 0, region: '', gender: 'Other', profession: 'Other',
+                    preferredLanguage: 'English', tonePreference: 'Soft',
+                    voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+                    therapistStyle: 'gentle', personalityMode: 'introvert',
+                    darkMode: false, isAdmin: false,
+                    role: 'patient', accountStatus: 'active',
+                    stats: { totalActiveDays: 0, lastActiveDate: '', badges: INITIAL_BADGES }
+                },
+                error: null
             };
         }
 
+        // Check metadata for application status if they are a therapist
+        let accountStatus: 'active' | 'pending' | 'suspended' = 'active';
+        if (profile.metadata?.applicationStatus === 'pending') {
+            accountStatus = 'pending';
+        }
+
         return {
-            id: profile.id,
-            email: profile.email || data.user.email,
-            name: profile.display_name || 'User',
-            is_anonymous: data.user.is_anonymous,
-            age: profile.age,
-            region: profile.region,
-            gender: profile.gender,
-            religion: profile.religion || 'Other',
-            profession: profile.profession,
-            preferredLanguage: profile.preferred_language,
-            tonePreference: profile.tone_preference,
-            voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
-            therapistStyle: 'gentle', personalityMode: 'introvert',
-            darkMode: false,
-            isAdmin: profile.role === 'admin' || profile.is_admin,
-            stats: profile.metadata || { totalActiveDays: 0, lastActiveDate: '', badges: INITIAL_BADGES }
+            user: {
+                id: profile.id,
+                email: profile.email || data.user.email,
+                name: profile.display_name || 'User',
+                is_anonymous: data.user.is_anonymous,
+                age: profile.age,
+                region: profile.region,
+                gender: profile.gender,
+                profession: profile.profession,
+                preferredLanguage: profile.preferred_language,
+                tonePreference: profile.tone_preference, // Maintaining compat
+                voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+                therapistStyle: 'gentle', personalityMode: 'introvert',
+                darkMode: false,
+                isAdmin: profile.role === 'admin' || profile.role === 'staff',
+                role: profile.role === 'therapist' ? 'therapist' : profile.role === 'admin' ? 'admin' : 'patient',
+                accountStatus: accountStatus,
+                stats: profile.metadata || { totalActiveDays: 0, lastActiveDate: '', badges: INITIAL_BADGES }
+            },
+            error: null
         };
 
-    } catch (e) { return null; }
+    } catch (e: any) { 
+        return { user: null, error: e.message || "An unexpected login error occurred." }; 
+    }
 };
 
 export const updateUserProfile = async (user: UserSettings) => {
@@ -213,7 +337,6 @@ export const updateUserProfile = async (user: UserSettings) => {
         age: user.age,
         region: user.region,
         gender: user.gender,
-        religion: user.religion,
         profession: user.profession,
         preferred_language: user.preferredLanguage,
         tone_preference: user.tonePreference,

@@ -1,208 +1,123 @@
+
 import { Memory, Session, JournalEntry, UserSettings, Badge } from '../types';
 import { updateUserProfile } from './authService';
+import { supabase } from './supabaseClient';
 
-// We now prefix keys with the userId to ensure isolation
-const getKey = (userId: string, type: 'memories' | 'journal' | 'sessions') => `sukoon_${userId}_${type}`;
-
-// --- Memories ---
-export const getMemories = (userId: string): Memory[] => {
-  const stored = localStorage.getItem(getKey(userId, 'memories'));
-  return stored ? JSON.parse(stored) : [];
+// --- Memories (Now synced with Supabase via aiMemoryService usually) ---
+export const getMemories = async (userId: string): Promise<Memory[]> => {
+    const { data } = await supabase.from('user_memory').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    
+    return (data || []).map((m: any) => ({
+        id: m.id,
+        content: m.content,
+        tags: [m.source_type],
+        createdAt: new Date(m.created_at).getTime(),
+        isCore: m.source_type === 'bio'
+    }));
 };
 
-export const saveMemories = (userId: string, memories: Memory[]) => {
-  localStorage.setItem(getKey(userId, 'memories'), JSON.stringify(memories));
+export const addMemory = async (userId: string, content: string, isCore: boolean = false) => {
+    // Deprecated wrapper - direct calls to aiMemoryService preferred in chat
+    // But kept for UI compatibility
+    return { id: '', content, tags: [], createdAt: Date.now(), isCore };
 };
 
-export const addMemory = (userId: string, content: string, isCore: boolean = false): Memory => {
-  const memories = getMemories(userId);
-  const newMemory: Memory = {
-    id: crypto.randomUUID(),
-    content,
-    tags: [],
-    createdAt: Date.now(),
-    isCore,
-  };
-  memories.push(newMemory);
-  saveMemories(userId, memories);
-  return newMemory;
-};
-
-export const deleteMemory = (userId: string, id: string) => {
-  const memories = getMemories(userId);
-  const filtered = memories.filter(m => m.id !== id);
-  saveMemories(userId, filtered);
-};
-
-// --- Sophisticated Context Retrieval ---
-
-const normalizeText = (text: string) => text.toLowerCase().replace(/[^\w\s]/g, '');
-const STOP_WORDS = new Set(['the', 'and', 'is', 'it', 'to', 'in', 'my', 'i', 'am', 'a', 'of', 'for', 'with', 'that', 'but', 'on', 'at', 'this', 'was', 'have', 'me', 'so', 'be', 'not', 'or', 'an', 'as', 'if', 'by', 'are', 'you']);
-
-const getTokens = (text: string): Set<string> => {
-    const words = normalizeText(text).split(/\s+/);
-    return new Set(words.filter(w => w.length > 2 && !STOP_WORDS.has(w)));
-};
-
-export const retrieveContext = (userId: string, userQuery: string, conversationContext: string = ""): string => {
-  const memories = getMemories(userId);
-  if (memories.length === 0) return "";
-
-  const queryTokens = getTokens(userQuery);
-  const contextTokens = getTokens(conversationContext);
-
-  const scoredMemories = memories.map(mem => {
-    let score = 0;
-    const memContentNormalized = normalizeText(mem.content);
-    const memTokens = getTokens(mem.content);
-
-    // 1. Exact Query Token Matches (High Weight)
-    // Matches what the user is explicitly asking/talking about right now
-    queryTokens.forEach(token => {
-        if (memTokens.has(token)) score += 10;
-        else if (memContentNormalized.includes(token)) score += 4; // Partial match bonus
-    });
-
-    // 2. Context History Matches (Medium Weight)
-    // Matches topics discussed in the last few turns (resolves implicit refs)
-    contextTokens.forEach(token => {
-        if (memTokens.has(token)) score += 3;
-    });
-
-    // 3. Recency Scoring (0 to 5 points)
-    // Prioritize memories from the last 7 days, decay linearly
-    const daysOld = (Date.now() - mem.createdAt) / (1000 * 60 * 60 * 24);
-    const recencyScore = Math.max(0, 5 - daysOld);
-    score += recencyScore;
-
-    // 4. Core Memory Boost (Sticky)
-    // Important facts (names, traumas, major events) get a permanent boost
-    if (mem.isCore) score += 6;
-
-    return { ...mem, score };
-  });
-
-  // Filter: Keep memories that have at least some relevance (score > 5)
-  // This threshold ensures we don't return random memories just because they are 'Core' if they are totally irrelevant.
-  // (A Core memory with 0 keyword matches would have score ~6-11 depending on recency. 
-  // A relevant recent non-core memory would be 10+5 = 15).
-  
-  const relevant = scoredMemories
-    .filter(m => m.score >= 5) 
-    .sort((a,b) => b.score - a.score)
-    .slice(0, 6); // Keep top 6 most relevant
-
-  if (relevant.length === 0) return "";
-
-  return `
-[RECALLED MEMORIES - Prioritize these details if relevant]:
-${relevant.map(m => `- ${m.content}`).join('\n')}
-`;
+export const deleteMemory = async (userId: string, id: string) => {
+    await supabase.from('user_memory').delete().eq('id', id).eq('user_id', userId);
 };
 
 // --- Sessions ---
-export const getSessions = (userId: string): Session[] => {
-  const stored = localStorage.getItem(getKey(userId, 'sessions'));
-  return stored ? JSON.parse(stored) : [];
+export const getSessions = async (userId: string): Promise<Session[]> => {
+    // 1. Fetch Sessions
+    const { data: sessions } = await supabase.from('chat_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+    if (!sessions) return [];
+
+    // 2. Hydrate with Messages (Simplified: Fetching all messages for recent sessions might be heavy, optimized for singular view in real app)
+    // For list view, we just return metadata.
+    return sessions.map((s: any) => ({
+        id: s.id,
+        startTime: new Date(s.created_at).getTime(),
+        endTime: new Date(s.updated_at).getTime(),
+        moodStart: s.mood,
+        messages: [] // Loaded lazily if needed
+    }));
 };
 
-export const saveSession = (userId: string, session: Session) => {
-  const sessions = getSessions(userId);
-  const index = sessions.findIndex(s => s.id === session.id);
-  if (index >= 0) {
-    sessions[index] = session;
-  } else {
-    sessions.push(session);
-  }
-  localStorage.setItem(getKey(userId, 'sessions'), JSON.stringify(sessions));
-};
-
-export const deleteSession = (userId: string, sessionId: string) => {
-  const sessions = getSessions(userId);
-  const filtered = sessions.filter(s => s.id !== sessionId);
-  localStorage.setItem(getKey(userId, 'sessions'), JSON.stringify(filtered));
+export const saveSession = async (userId: string, session: Session) => {
+    // Handled in dataService.ts
 };
 
 // --- Journals ---
-export const getJournals = (userId: string): JournalEntry[] => {
-    const stored = localStorage.getItem(getKey(userId, 'journal'));
-    return stored ? JSON.parse(stored) : [];
-}
+export const getJournals = async (userId: string): Promise<JournalEntry[]> => {
+    const { data } = await supabase.from('journal_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-export const saveJournals = (userId: string, entries: JournalEntry[]) => {
-    localStorage.setItem(getKey(userId, 'journal'), JSON.stringify(entries));
-}
+    return (data || []).map((j: any) => ({
+        id: j.id,
+        title: j.title,
+        content: j.content,
+        mood: j.mood,
+        timestamp: new Date(j.created_at).getTime()
+    }));
+};
+
+export const saveJournals = async (userId: string, entries: JournalEntry[]) => {
+    // Handled in dataService.ts
+};
 
 // --- Deletion Logic ---
-export const deleteTodayData = (userId: string) => {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  
-  // Filter Memories
-  const mems = getMemories(userId).filter(m => m.createdAt < startOfDay);
-  saveMemories(userId, mems);
-
-  // Filter Journals
-  const journals = getJournals(userId).filter(j => j.timestamp < startOfDay);
-  saveJournals(userId, journals);
-
-  // Filter Sessions
-  const sessions = getSessions(userId).filter(s => s.startTime < startOfDay);
-  localStorage.setItem(getKey(userId, 'sessions'), JSON.stringify(sessions));
+export const deleteTodayData = async (userId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    await supabase.from('chat_messages').delete().eq('user_id', userId).gte('created_at', today);
+    await supabase.from('journal_entries').delete().eq('user_id', userId).gte('created_at', today);
 };
 
-export const deleteAllData = (userId: string) => {
-  localStorage.removeItem(getKey(userId, 'memories'));
-  localStorage.removeItem(getKey(userId, 'journal'));
-  localStorage.removeItem(getKey(userId, 'sessions'));
+export const deleteAllData = async (userId: string) => {
+    await supabase.from('chat_messages').delete().eq('user_id', userId);
+    await supabase.from('journal_entries').delete().eq('user_id', userId);
+    await supabase.from('user_memory').delete().eq('user_id', userId);
+    await supabase.from('chat_sessions').delete().eq('user_id', userId);
 };
 
-export const deleteDateData = (userId: string, dateStr: string) => {
-  // dateStr is YYYY-MM-DD
-  const targetDate = new Date(dateStr);
-  const start = targetDate.setHours(0,0,0,0);
-  const end = targetDate.setHours(23,59,59,999);
-
-  const filterFn = (ts: number) => ts < start || ts > end;
-
-  saveMemories(userId, getMemories(userId).filter(m => filterFn(m.createdAt)));
-  
-  const journals = getJournals(userId);
-  saveJournals(userId, journals.filter(j => filterFn(j.timestamp)));
-
-  const sessions = getSessions(userId);
-  localStorage.setItem(getKey(userId, 'sessions'), JSON.stringify(sessions.filter(s => filterFn(s.startTime))));
+export const deleteDateData = async (userId: string, dateStr: string) => {
+    // dateStr is YYYY-MM-DD
+    const start = `${dateStr}T00:00:00.000Z`;
+    const end = `${dateStr}T23:59:59.999Z`;
+    
+    await supabase.from('journal_entries').delete().eq('user_id', userId).gte('created_at', start).lte('created_at', end);
+    await supabase.from('chat_messages').delete().eq('user_id', userId).gte('created_at', start).lte('created_at', end);
 };
 
-
-// --- Streaks & Badges ---
+// --- Streaks & Badges (Updates User Profile directly) ---
 export const trackUserActivity = (user: UserSettings): { updatedUser: UserSettings, newBadge?: Badge } => {
-    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const stats = { ...user.stats };
 
-    // If already active today, do nothing
-    if (stats.lastActiveDate === todayStr) {
-        return { updatedUser: user };
-    }
+    if (stats.lastActiveDate === todayStr) return { updatedUser: user };
 
-    // Increment days
     stats.lastActiveDate = todayStr;
     stats.totalActiveDays += 1;
 
-    // Check for new badges
     let newBadge: Badge | undefined;
     const updatedBadges = stats.badges.map(b => {
         if (!b.unlockedAt && stats.totalActiveDays >= b.requiredDays) {
             const unlocked = { ...b, unlockedAt: Date.now() };
-            if (!newBadge) newBadge = unlocked; // Only notify one at a time usually
+            if (!newBadge) newBadge = unlocked;
             return unlocked;
         }
         return b;
     });
     
     stats.badges = updatedBadges;
-
     const updatedUser = { ...user, stats };
+    
+    // Persist to DB
     updateUserProfile(updatedUser);
     
     return { updatedUser, newBadge };

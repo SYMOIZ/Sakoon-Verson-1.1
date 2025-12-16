@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, MessageRole, Mood, Session, UserSettings, SessionRating, Badge, BugReport, UserFeedback } from '../types';
+import { Message, MessageRole, Mood, Session, UserSettings, SessionRating, Badge, BugReport, UserFeedback, Gender, Profession } from '../types';
 import { ChatMessage } from '../components/ChatMessage';
 import { EmergencyOverlay } from '../components/EmergencyOverlay';
 import { SessionRatingModal } from '../components/SessionRatingModal';
 import { FeedbackModal } from '../components/FeedbackModal';
 import { checkForCrisis, generateTherapistResponse, generateSpeech, transcribeAudio } from '../services/geminiService';
-import { addMemory, saveSession, trackUserActivity } from '../services/ragService';
-import { saveRating, saveBugReport, saveUserFeedback } from '../services/dataService';
+import { trackUserActivity } from '../services/ragService';
+import { saveRating, saveBugReport, saveUserFeedback, triggerRiskAlert, checkPendingInterventions, scanForPII, suspendUser } from '../services/dataService';
+import { chatPersistenceService } from '../services/chatPersistenceService';
 import { MOODS } from '../constants';
 
 interface ChatPageProps {
@@ -17,9 +18,10 @@ interface ChatPageProps {
 }
 
 const GUEST_LIMIT = 10;
+const RISK_KEYWORDS_HIGH = ["kill myself", "suicide", "end it all", "want to die", "cutting myself", "hurt myself", "take my own life"];
 
 export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSignUp }) => {
-  const [sessionId, setSessionId] = useState(crypto.randomUUID());
+  const [sessionId, setSessionId] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionMood, setSessionMood] = useState<Mood | undefined>(undefined);
   const [inputText, setInputText] = useState('');
@@ -36,49 +38,100 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
   // Safe Mode (Tarash Zone)
   const [safeMode, setSafeMode] = useState(false);
 
+  // Disqualification State
+  const [isDisqualified, setIsDisqualified] = useState(false);
+  const [disqualificationReason, setDisqualificationReason] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const hasInitialized = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasInitialized = useRef(false);
 
   // Guest Logic
   const isGuest = settings.is_anonymous;
   const userMessageCount = messages.filter(m => m.role === MessageRole.USER).length;
   const isLimitReached = !!isGuest && userMessageCount >= GUEST_LIMIT;
 
+  // --- 1. INITIALIZATION & HISTORY RESTORE ---
   useEffect(() => {
-    if (!hasInitialized.current) {
-        let welcomeText = "";
-        if (settings.isAdmin) {
-            welcomeText = "Admin System Online. Business Analytics Mode Active.";
-        } else {
-            welcomeText = `Hello, ${settings.name}. I'm Sukoon. I am here to provide professional, supportive guidance. How can I assist you today?`;
+    const initSession = async () => {
+        if (hasInitialized.current) return;
+        
+        // A. Check Disqualification
+        if (settings.accountStatus === 'suspended') {
+            setIsDisqualified(true);
+            setDisqualificationReason(settings.suspensionReason || "Account Suspended");
+            return;
         }
-        setMessages([{ id: 'welcome', role: MessageRole.MODEL, text: welcomeText, timestamp: Date.now() }]);
+
+        // B. Recover or Create Session
+        let activeSessionId = sessionId;
+        
+        if (!settings.isAdmin && !isGuest) {
+            const lastSession = await chatPersistenceService.getLastActiveSession(settings.id);
+            if (lastSession) {
+                // Restore Found Session
+                activeSessionId = lastSession.id;
+                setSessionId(activeSessionId);
+                const history = await chatPersistenceService.getChatHistory(activeSessionId);
+                setMessages(history);
+                if (history.length > 0) hasInitialized.current = true;
+            } else {
+                // Create New Session
+                activeSessionId = await chatPersistenceService.createSession(settings.id);
+                setSessionId(activeSessionId);
+            }
+        } else {
+            // Guest/Admin (Ephemeral Session)
+            if(!activeSessionId) {
+                activeSessionId = crypto.randomUUID();
+                setSessionId(activeSessionId);
+            }
+        }
+
+        // C. Welcome Message (Only if chat is empty)
+        if (messages.length === 0 && !hasInitialized.current) {
+            let welcomeText = "";
+            if (settings.isAdmin) {
+                welcomeText = "Admin System Online. Business Analytics Mode Active.";
+            } else {
+                welcomeText = `Hello, ${settings.name}. I'm Sukoon. I'm here to listen. How are you feeling right now?`;
+            }
+            const welcomeMsg: Message = { id: crypto.randomUUID(), role: MessageRole.MODEL, text: welcomeText, timestamp: Date.now() };
+            setMessages([welcomeMsg]);
+            
+            // Persist welcome message if not admin/guest
+            if (!settings.isAdmin && !isGuest) {
+                chatPersistenceService.saveMessage(settings.id, activeSessionId, welcomeMsg);
+            }
+        }
+        
         hasInitialized.current = true;
-    }
+    };
+
+    initSession();
+
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             (err) => console.log("Location denied")
         );
     }
-  }, [settings.name, settings.isAdmin]);
+  }, [settings.id, settings.name, settings.isAdmin, settings.accountStatus]);
+
+  // Poll for Interventions
+  useEffect(() => {
+      if (settings.isAdmin || isDisqualified) return;
+      const interval = setInterval(() => {
+          const interventions = checkPendingInterventions(settings.id);
+          if (interventions.length > 0) {
+              setMessages(prev => [...prev, ...interventions]);
+          }
+      }, 3000);
+      return () => clearInterval(interval);
+  }, [settings.id, settings.isAdmin, isDisqualified]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  useEffect(() => {
-      if (messages.length > 1 && !safeMode && !settings.isAdmin) {
-          const session: Session = {
-              id: sessionId,
-              startTime: messages[0].timestamp,
-              endTime: Date.now(),
-              messages: messages,
-              moodStart: sessionMood,
-          };
-          saveSession(settings.id, session);
-      }
-  }, [messages, sessionMood, sessionId, settings.id, safeMode, settings.isAdmin]);
 
   const toggleSafeMode = () => {
       const newState = !safeMode;
@@ -108,8 +161,32 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-    if (isLimitReached) return; // Prevent send if limit reached
+    if (isLimitReached) return; 
+    if (isDisqualified) return;
 
+    // --- ZERO TOLERANCE PII CHECK ---
+    const piiCheck = scanForPII(inputText);
+    if (piiCheck.detected && !settings.isAdmin) {
+        const reason = `Zero-Tolerance Violation: Attempted to share ${piiCheck.type} (${piiCheck.match})`;
+        await suspendUser(settings.id, reason);
+        triggerRiskAlert({ type: 'Policy Violation', message: `User attempted to share contact info: "${inputText}"`, userId: settings.id, userName: settings.name, triggerKeyword: piiCheck.match, id: '', studentId: settings.id, studentName: settings.name, detectedAt: Date.now(), status: 'Active' });
+        setIsDisqualified(true);
+        setDisqualificationReason("Attempting to share personal contact details (Phone/ID) outside the secure channel.");
+        return; 
+    }
+
+    // --- SAFETY INTERVENTION CHECK ---
+    const lowerInput = inputText.toLowerCase();
+    const matchedKeyword = RISK_KEYWORDS_HIGH.find(k => lowerInput.includes(k));
+    
+    if (matchedKeyword) {
+        triggerRiskAlert({ type: 'High Risk', message: `User triggered safety protocol. Input: "${inputText}"`, triggerKeyword: matchedKeyword, userId: settings.id, userName: settings.name, id: '', studentId: settings.id, studentName: settings.name, detectedAt: Date.now(), status: 'Active' });
+        setInputText('');
+        setIsCrisis(true); 
+        return; 
+    }
+
+    // Update Activity Streak
     if (!safeMode) {
         const { updatedUser, newBadge: earnedBadge } = trackUserActivity(settings);
         if (updatedUser.stats.totalActiveDays !== settings.stats.totalActiveDays) {
@@ -121,23 +198,31 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
         }
     }
 
+    // 1. Optimistic UI Update (User Message)
     const userMsg: Message = { id: crypto.randomUUID(), role: MessageRole.USER, text: inputText, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setIsTyping(true);
 
+    // 2. Persist User Message (Async)
+    if (!safeMode && !settings.isAdmin && !isGuest && sessionId) {
+        chatPersistenceService.saveMessage(settings.id, sessionId, userMsg);
+    }
+
+    // Crisis Check on Input
     if (checkForCrisis(userMsg.text)) {
       setIsCrisis(true);
       setIsTyping(false);
       return;
     }
 
+    // 3. Generate AI Response (RAG happens inside `generateTherapistResponse` via `retrieveContext`)
     const history = messages.slice(-10).map(m => ({ role: m.role, text: m.text }));
     
     const response = await generateTherapistResponse(
         settings.id, history, userMsg.text,
         {
-            name: settings.name, age: settings.age, gender: settings.gender, profession: settings.profession,
+            name: settings.name, age: settings.age, gender: settings.gender as Gender, profession: settings.profession as Profession,
             language: settings.preferredLanguage, tone: settings.tonePreference, isAdmin: settings.isAdmin
         },
         location, settings.therapistStyle, settings.personalityMode,
@@ -155,6 +240,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
         audioData = await generateSpeech(response.text);
     }
 
+    // 4. Optimistic UI Update (AI Message)
     const botMsg: Message = {
       id: crypto.randomUUID(), role: MessageRole.MODEL, text: response.text,
       timestamp: Date.now(), audioBase64: audioData, groundingLinks: response.groundingLinks
@@ -163,10 +249,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
     setMessages(prev => [...prev, botMsg]);
     setIsTyping(false);
 
-    if (settings.autoPlayAudio && audioData) playAudio(audioData);
-    if (settings.memoryEnabled && !safeMode && !settings.isAdmin && userMsg.text.length > 60) {
-        addMemory(settings.id, userMsg.text); 
+    // 5. Persist AI Message (Async)
+    if (!safeMode && !settings.isAdmin && !isGuest && sessionId) {
+        chatPersistenceService.saveMessage(settings.id, sessionId, botMsg);
     }
+
+    if (settings.autoPlayAudio && audioData) playAudio(audioData);
   };
 
   const playAudio = async (base64: string) => {
@@ -196,6 +284,33 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
   const handleSubmitFeedback = async (feedback: Omit<UserFeedback, 'id' | 'timestamp'>) => {
       await saveUserFeedback({ ...feedback, id: crypto.randomUUID(), timestamp: Date.now() }, settings.is_anonymous);
       alert("Feedback received. We appreciate your thoughts!");
+  }
+
+  // --- DISQUALIFIED VIEW ---
+  if (isDisqualified) {
+      return (
+          <div className="fixed inset-0 z-[100] bg-rose-900 flex items-center justify-center p-6 text-center animate-fade-in">
+              <div className="bg-white max-w-lg w-full p-10 rounded-3xl shadow-2xl">
+                  <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                  </div>
+                  <h1 className="text-3xl font-bold text-rose-600 mb-4">Account Deactivated</h1>
+                  <div className="bg-rose-50 border-l-4 border-rose-500 p-4 text-left mb-6">
+                      <p className="font-bold text-rose-900 text-sm uppercase mb-1">Violation Detected:</p>
+                      <p className="text-rose-800 text-sm leading-relaxed">
+                          "You have been disqualified from the Sukoon Platform for violating our Zero-Tolerance Policy."
+                      </p>
+                  </div>
+                  <p className="text-slate-600 mb-8 leading-relaxed">
+                      <strong>Reason:</strong> {disqualificationReason}<br/><br/>
+                      This action has been reported to the Administrator. If you believe this is a mistake, contact <span className="font-mono bg-slate-100 px-1 rounded">support@sukoon.com</span>.
+                  </p>
+                  <button onClick={onSignUp} className="w-full py-4 border-2 border-slate-200 text-slate-500 font-bold rounded-xl hover:bg-slate-50 transition-colors">
+                      Return to Home
+                  </button>
+              </div>
+          </div>
+      );
   }
 
   return (
@@ -234,30 +349,23 @@ export const ChatPage: React.FC<ChatPageProps> = ({ settings, onUpdateUser, onSi
           </div>
       )}
 
-      <header className="bg-white/80 dark:bg-navy-900/80 backdrop-blur-md border-b border-lavender-100 dark:border-navy-800 px-6 py-4 flex items-center justify-between z-10 sticky top-0">
-        <div>
-           <h1 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">Current Session {safeMode && <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">Tarash Zone</span>}</h1>
-           <p className="text-xs text-slate-400 dark:text-slate-500">{settings.isAdmin ? 'Admin Mode' : 'Professional Support'}</p>
+      {/* Main Chat Controls */}
+      {!settings.isAdmin && (
+        <div className="absolute top-4 right-4 z-10 flex gap-2">
+             <button onClick={toggleSafeMode} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm ${safeMode ? 'bg-slate-800 text-white' : 'bg-white/80 backdrop-blur text-slate-600 border border-slate-100 hover:bg-slate-50'}`}>
+                {safeMode ? "Exit Tarash Zone" : "Enter Tarash Zone"}
+            </button>
+            <div className="flex rounded-lg bg-white/80 backdrop-blur border border-slate-100 p-0.5 shadow-sm">
+                <button onClick={() => { setFeedbackMode('bug'); setShowFeedbackModal(true); }} className="px-3 py-1 text-xs font-bold text-slate-500 hover:text-slate-800">Report</button>
+                <div className="w-px bg-slate-200 mx-1"></div>
+                <button onClick={() => { setFeedbackMode('feedback'); setShowFeedbackModal(true); }} className="px-3 py-1 text-xs font-bold text-slate-500 hover:text-slate-800">Feedback</button>
+            </div>
+             <button onClick={() => setIsCrisis(true)} className="px-3 py-1.5 bg-rose-100 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-200 transition-colors shadow-sm">Emergency</button>
+             <button onClick={handleEndSession} className="px-3 py-1.5 bg-white/80 backdrop-blur text-slate-600 border border-slate-100 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm">End</button>
         </div>
-        <div className="flex gap-2">
-             {!settings.isAdmin && (
-                 <>
-                    <button onClick={toggleSafeMode} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${safeMode ? 'bg-slate-800 text-white' : 'bg-slate-100 dark:bg-navy-800 text-slate-600 dark:text-slate-300'}`}>
-                        {safeMode ? "Exit Tarash Zone" : "Enter Tarash Zone"}
-                    </button>
-                    <div className="flex rounded-lg bg-slate-100 dark:bg-navy-800 p-0.5">
-                        <button onClick={() => { setFeedbackMode('bug'); setShowFeedbackModal(true); }} className="px-3 py-1 text-xs font-bold text-slate-500 hover:text-slate-800">Report</button>
-                        <div className="w-px bg-slate-200 dark:bg-navy-700 mx-1"></div>
-                        <button onClick={() => { setFeedbackMode('feedback'); setShowFeedbackModal(true); }} className="px-3 py-1 text-xs font-bold text-slate-500 hover:text-slate-800">Feedback</button>
-                    </div>
-                 </>
-             )}
-             <button onClick={() => setIsCrisis(true)} className="px-3 py-1.5 bg-rose-100 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-200 transition-colors">Emergency</button>
-             <button onClick={handleEndSession} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">End</button>
-        </div>
-      </header>
+      )}
 
-      <div className="flex-1 overflow-y-auto px-4 md:px-20 py-6 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto px-4 md:px-20 py-6 scrollbar-hide pt-16">
         {!sessionMood && messages.length < 3 && !settings.isAdmin && (
             <div className="mb-8 flex flex-col items-center animate-fade-in">
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">How are you feeling?</p>

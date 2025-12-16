@@ -1,8 +1,8 @@
 
-
 import React, { useState, useEffect } from 'react';
-import { UserSettings, Gender, Profession, TonePreference, Language, Religion } from '../types';
-import { loginUser, registerUser, signInAnonymously } from '../services/authService';
+import { UserSettings, Gender, Profession, TonePreference, Language } from '../types';
+import { loginUser, registerUser, signInAnonymously, registerTherapist } from '../services/authService';
+import { getTeamMembers } from '../services/dataService';
 import { TermsPage } from './TermsPage';
 import { CHECKIN_POOLS } from '../constants';
 import { saveCheckInEvent } from '../services/dataService';
@@ -11,7 +11,7 @@ interface WelcomePageProps {
   onComplete: (userSettings: UserSettings) => void;
 }
 
-type ViewState = 'landing' | 'login' | 'signup' | 'terms' | 'checkIn' | 'content';
+type ViewState = 'landing' | 'login' | 'signup' | 'terms' | 'checkIn' | 'content' | 'therapist-landing' | 'therapist-signup' | 'therapist-pending';
 
 const LANGUAGES: Language[] = ['English', 'Urdu', 'Roman Urdu', 'Sindhi', 'Pashto', 'Siraiki', 'Arabic', 'Spanish'];
 const TONES: TonePreference[] = ['Cute', 'Mature', 'Friendly', 'Soft', 'Calm', 'Direct'];
@@ -70,6 +70,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
   const [view, setView] = useState<ViewState>('landing');
   const [contentPath, setContentPath] = useState(''); // For simulated router
   const [isLoading, setIsLoading] = useState(false);
+  const [applicationId, setApplicationId] = useState('');
   
   // Login State
   const [loginData, setLoginData] = useState({ email: '', password: '' });
@@ -77,9 +78,17 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
   // Registration State
   const [regData, setRegData] = useState({
       name: '', email: '', password: '', confirmPassword: '',
-      age: '', region: '', gender: 'Female' as Gender, profession: 'Student' as Profession,
-      religion: 'Hindu' as Religion,
+      age: '', region: '', gender: '', profession: '',
       language: 'English' as Language, tone: 'Soft' as TonePreference
+  });
+
+  // CAPTCHA State (Simulated for Demo)
+  const [captchaVerified, setCaptchaVerified] = useState(false);
+
+  // Therapist Registration State
+  const [therapistRegData, setTherapistRegData] = useState({
+      fullName: '', email: '', phone: '', password: '', yearsExperience: '', specialization: '', licenseNumber: '',
+      cvFile: null as File | null, degreeFile: null as File | null
   });
 
   const [error, setError] = useState('');
@@ -103,34 +112,67 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       else if (path === '/login') setView('login');
       else if (path === '/chat') setView('checkIn'); // Chat flow starts with checkin
       else if (path === '/terms' || path === '/privacy') setView('terms');
+      else if (path === '/therapist') setView('therapist-landing');
+      else if (path === '/therapist') setView('therapist-landing');
       else if (CONTENT_PAGES[path]) {
           setContentPath(path);
           setView('content');
       } else {
-          console.warn("Route not found:", path);
-          // Fallback to avoid dead clicks if a route is missing in CONTENT_PAGES but requested
-          if (path.startsWith('/struggles/')) {
-             setContentPath('/topics/struggles');
-             setView('content');
-          } else if (path.startsWith('/topics/')) {
-             setContentPath('/therapy/topics');
-             setView('content');
-          } else {
-             // Default fallback
-             setContentPath('/therapy/types');
-             setView('content');
+          // Internal scroll handling for Landing page
+          if ((view === 'landing' || view === 'therapist-landing') && path.startsWith('#')) {
+             const id = path.substring(1);
+             document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+             return;
           }
+
+          console.warn("Route not found:", path);
+          // Fallback
+          setContentPath('/therapy/types');
+          setView('content');
       }
       window.scrollTo(0,0);
+  };
+
+  const handleMockFill = (role: 'student' | 'therapist' | 'admin') => {
+      if (role === 'student') {
+          setLoginData({ email: 'student@sukoon.com', password: 'password123' });
+      } else if (role === 'therapist') {
+          setLoginData({ email: 'test@sukoon.com', password: '@dmin1218' });
+      } else if (role === 'admin') {
+          setLoginData({ email: 'admin@sukoon.com', password: '@dmin1218' });
+      }
+      setError('');
   };
 
   const handleLogin = async () => {
       setError('');
       setIsLoading(true);
-      if (loginData.email === 'admin@sukoon.com' && loginData.password === '@dmin1218') {
+      const email = loginData.email.trim().toLowerCase(); // Normalize email
+      const password = loginData.password.trim();
+
+      // 1. Mock Student Bypass
+      if (email === 'student@sukoon.com' && password === 'password123') {
+          onComplete({
+              id: 'student-test',
+              email: 'student@sukoon.com',
+              name: 'Student User',
+              is_anonymous: false,
+              age: 21, region: 'University', gender: 'Female', profession: 'Student',
+              preferredLanguage: 'English', tonePreference: 'Friendly',
+              voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+              therapistStyle: 'cbt', personalityMode: 'introvert',
+              darkMode: false, isAdmin: false, role: 'patient', accountStatus: 'active',
+              stats: { totalActiveDays: 5, lastActiveDate: new Date().toLocaleDateString('en-CA'), badges: [] }
+          });
+          setIsLoading(false);
+          return;
+      }
+
+      // 2. Mock Admin Bypass
+      if (email === 'admin@sukoon.com' && password === '@dmin1218') {
           onComplete({
               id: 'admin', email: 'admin@sukoon.com', name: 'Administrator',
-              age: 0, region: 'Global', gender: 'Other', profession: 'Other', religion: 'Other',
+              age: 0, region: 'Global', gender: 'Other', profession: 'Other',
               is_anonymous: false,
               preferredLanguage: 'English', tonePreference: 'Direct',
               voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
@@ -140,18 +182,93 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
           setIsLoading(false);
           return;
       }
-      const user = await loginUser(loginData.email, loginData.password);
-      setIsLoading(false);
-      if(user) onComplete(user);
-      else setError("Incorrect email or password. Please try again.");
+
+      // 3. Mock Therapist Bypass (TEST ACCOUNT)
+      if (email === 'test@sukoon.com' && password === '@dmin1218') {
+          onComplete({
+              id: 'th-test-01',
+              email: 'test@sukoon.com',
+              name: 'Dr. Test Therapist',
+              is_anonymous: false,
+              age: 35, region: 'Global', gender: 'Other', profession: 'Working Professional',
+              preferredLanguage: 'English', tonePreference: 'Calm',
+              voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+              therapistStyle: 'gentle', personalityMode: 'introvert',
+              darkMode: false, 
+              isAdmin: false,
+              role: 'therapist', // IMPORTANT: Triggers Therapist Dashboard
+              accountStatus: 'active',
+              stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
+          });
+          setIsLoading(false);
+          return;
+      }
+
+      // 4. Check Mock Team Members
+      const teamMembers = await getTeamMembers();
+      const staffMember = teamMembers.find(m => m.email.toLowerCase() === email);
+      
+      if (staffMember) {
+          if (staffMember.status === 'Suspended') {
+              setError("This account has been suspended.");
+              setIsLoading(false);
+              return;
+          }
+          
+          onComplete({
+              id: staffMember.id,
+              email: staffMember.email,
+              name: staffMember.name,
+              is_anonymous: false,
+              age: 25, region: 'Staff', gender: 'Other', profession: 'Team Member',
+              preferredLanguage: 'English', tonePreference: 'Direct',
+              voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
+              therapistStyle: 'gentle', personalityMode: 'introvert',
+              darkMode: false, 
+              isAdmin: true, // Grants access to Admin Dashboard
+              role: 'staff', 
+              accountStatus: 'active',
+              stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
+          });
+          setIsLoading(false);
+          return;
+      }
+
+      // 5. Supabase Login
+      try {
+          const result = await loginUser(email, password);
+          setIsLoading(false);
+          
+          if (result.user) {
+              if (result.user.accountStatus === 'pending' || (result.user.role === 'therapist' && result.user.accountStatus !== 'active')) {
+                 // Redirect pending therapists to pending view
+                 setApplicationId('RETURNING-USER');
+                 setView('therapist-pending');
+              } else {
+                 onComplete(result.user);
+              }
+          } else {
+              setError(result.error || "Incorrect email or password. Try the Demo accounts below.");
+          }
+      } catch (e) {
+          setIsLoading(false);
+          setError("Connection error. Please use Demo Accounts.");
+      }
   };
 
   const handleSignup = async () => {
       setError('');
       if (!regData.name || !regData.email || !regData.password || !regData.age || !regData.region) { setError("Please fill in all fields."); return; }
+      if (!regData.gender) { setError("Please select a gender."); return; }
+      if (!regData.profession) { setError("Please select a profession."); return; }
       if (regData.password.length < 6) { setError("Password must be at least 6 characters."); return; }
       if (regData.password !== regData.confirmPassword) { setError("Passwords do not match."); return; }
       
+      if (!captchaVerified) {
+          setError("Please verify you are human.");
+          return;
+      }
+
       const ageNum = parseInt(regData.age);
       if (isNaN(ageNum) || ageNum < 13) {
           setError("You must be at least 13 years old to sign up.");
@@ -159,13 +276,55 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       }
       
       setIsLoading(true);
-      const result = await registerUser({ ...regData, age: ageNum });
+      // In a real app, this token comes from the hCaptcha/reCAPTCHA callback
+      const dummyToken = "mock_captcha_token_123"; 
+      
+      const result = await registerUser({ 
+          ...regData, 
+          age: ageNum, 
+          gender: regData.gender as any, 
+          profession: regData.profession as any,
+          captchaToken: dummyToken
+      });
       setIsLoading(false);
       
       if (result.error) {
           setError(result.error);
       } else if (result.user) {
           onComplete(result.user);
+      }
+  };
+
+  const handleTherapistSignup = async () => {
+      setError('');
+      if (!therapistRegData.fullName || !therapistRegData.email || !therapistRegData.phone || !therapistRegData.password || !therapistRegData.yearsExperience) {
+          setError("Please fill in all required fields."); return;
+      }
+      if (!therapistRegData.specialization) { setError("Please select a specialization."); return; }
+      if (!therapistRegData.cvFile) { setError("Please upload your CV."); return; }
+      if (!therapistRegData.degreeFile) { setError("Please upload your Degree/Transcript."); return; }
+      if (therapistRegData.password.length < 6) { setError("Password must be at least 6 characters."); return; }
+
+      setIsLoading(true);
+      // Pass the new fields to the registration service (Mocked for now in UI)
+      const result = await registerTherapist({
+          fullName: therapistRegData.fullName,
+          email: therapistRegData.email,
+          phone: therapistRegData.phone,
+          password: therapistRegData.password,
+          yearsExperience: parseInt(therapistRegData.yearsExperience),
+          specialization: therapistRegData.specialization,
+          licenseNumber: therapistRegData.licenseNumber,
+          cvFile: therapistRegData.cvFile,
+          degreeFile: therapistRegData.degreeFile
+      });
+      setIsLoading(false);
+
+      if (result.error) {
+          setError(result.error);
+      } else if (result.user && result.applicationId) {
+          setApplicationId(result.applicationId);
+          setView('therapist-pending');
       }
   };
 
@@ -283,10 +442,153 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
       );
   }
 
+  // THERAPIST LANDING PAGE
+  if (view === 'therapist-landing') {
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans overflow-x-hidden text-slate-900">
+            {/* Navbar */}
+            <nav className="fixed w-full z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('landing')}>
+                        <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-lg">S</div>
+                        <span className="font-bold text-xl text-slate-900">Sukoon <span className="text-teal-600 text-sm font-medium uppercase tracking-wider ml-1">For Therapists</span></span>
+                    </div>
+                    <div className="flex gap-4">
+                        <button onClick={() => setView('login')} className="px-5 py-2 font-bold text-slate-600 hover:text-slate-900">Log In</button>
+                        <button onClick={() => setView('therapist-signup')} className="px-6 py-2 bg-teal-600 text-white rounded-full font-bold hover:bg-teal-700 transition-colors shadow-lg">Join as Therapist</button>
+                    </div>
+                </div>
+            </nav>
+
+            <header className="pt-40 pb-20 px-6 max-w-7xl mx-auto text-center">
+                <h1 className="text-5xl md:text-7xl font-bold text-slate-900 mb-8 tracking-tight">
+                    Grow your practice <br/> with <span className="text-teal-600">digital care.</span>
+                </h1>
+                <p className="text-xl text-slate-600 max-w-3xl mx-auto mb-10 leading-relaxed">
+                    Join the future of mental health. Sukoon connects you with students and young adults seeking professional guidance, allowing you to manage appointments and reach more people effortlessly.
+                </p>
+            </header>
+
+            <section className="py-20 px-6 bg-white">
+                <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-12">
+                    <div className="p-8 bg-slate-50 rounded-3xl">
+                        <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center text-2xl mb-6">📅</div>
+                        <h3 className="text-xl font-bold mb-3">Flexible Scheduling</h3>
+                        <p className="text-slate-600">Set your own hours. Manage your availability and sync your calendar directly within the platform.</p>
+                    </div>
+                    <div className="p-8 bg-slate-50 rounded-3xl">
+                        <div className="w-12 h-12 bg-lavender-100 text-lavender-600 rounded-xl flex items-center justify-center text-2xl mb-6">📈</div>
+                        <h3 className="text-xl font-bold mb-3">Consistent Earnings</h3>
+                        <p className="text-slate-600">Expand your client base with steady referrals. Transparent payment structures with no hidden fees.</p>
+                    </div>
+                    <div className="p-8 bg-slate-50 rounded-3xl">
+                        <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center text-2xl mb-6">🔒</div>
+                        <h3 className="text-xl font-bold mb-3">Secure & Private</h3>
+                        <p className="text-slate-600">We prioritize data privacy and security for both you and your patients, compliant with health standards.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <section className="py-20 px-6 text-center">
+                <div className="max-w-4xl mx-auto bg-slate-900 text-white rounded-[3rem] p-12 md:p-20 relative overflow-hidden">
+                     <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500 rounded-full blur-[100px] opacity-20 translate-x-1/2 -translate-y-1/2"></div>
+                     <h2 className="text-3xl md:text-5xl font-bold mb-6">Ready to make an impact?</h2>
+                     <p className="text-slate-300 text-lg mb-10 max-w-xl mx-auto">Start your application today. Our team reviews all applications within 48 hours.</p>
+                     <button onClick={() => setView('therapist-signup')} className="px-10 py-4 bg-teal-500 text-white text-lg font-bold rounded-full hover:bg-teal-400 transition-colors shadow-xl hover:scale-105 transform duration-200">Start Application</button>
+                </div>
+            </section>
+
+             <footer className="bg-white py-10 border-t border-slate-200 text-center text-slate-500 text-sm">
+                <p>© {new Date().getFullYear()} Sukoon AI. Therapist Partner Program.</p>
+            </footer>
+        </div>
+      );
+  }
+
+  // THERAPIST SIGNUP FORM
+  if (view === 'therapist-signup') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 py-20" id="join-form">
+            <div className="w-full max-w-2xl bg-white p-10 rounded-[2rem] shadow-xl border border-slate-200">
+                <button onClick={() => setView('therapist-landing')} className="text-sm font-bold text-slate-400 hover:text-slate-600 mb-6">← Back</button>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">Therapist Application</h2>
+                <p className="text-slate-500 mb-8">Please provide your professional details for verification.</p>
+                
+                {error && <div className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-medium">{error}</div>}
+
+                <div className="space-y-6">
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Full Name</label>
+                            <input type="text" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" value={therapistRegData.fullName} onChange={e => setTherapistRegData({...therapistRegData, fullName: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Years of Experience</label>
+                            <input type="number" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" value={therapistRegData.yearsExperience} onChange={e => setTherapistRegData({...therapistRegData, yearsExperience: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Email Address</label>
+                            <input type="email" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" value={therapistRegData.email} onChange={e => setTherapistRegData({...therapistRegData, email: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Phone Number</label>
+                            <input type="tel" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" value={therapistRegData.phone} onChange={e => setTherapistRegData({...therapistRegData, phone: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Specialization</label>
+                            <select 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500"
+                                value={therapistRegData.specialization}
+                                onChange={e => setTherapistRegData({...therapistRegData, specialization: e.target.value})}
+                            >
+                                <option value="" disabled>Select...</option>
+                                <option>Anxiety & Stress</option>
+                                <option>Career Counseling</option>
+                                <option>Depression</option>
+                                <option>Family Therapy</option>
+                                <option>Trauma</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">License / Reg Number</label>
+                            <input type="text" placeholder="Optional" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500" value={therapistRegData.licenseNumber} onChange={e => setTherapistRegData({...therapistRegData, licenseNumber: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Password</label>
+                        <input type="password" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all" value={therapistRegData.password} onChange={e => setTherapistRegData({...therapistRegData, password: e.target.value})} />
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Upload CV / Resume (PDF)</label>
+                        <input type="file" accept=".pdf,.doc,.docx" onChange={e => setTherapistRegData({...therapistRegData, cvFile: e.target.files?.[0] || null})} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100" />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Upload Degree / Transcript</label>
+                        <input type="file" accept=".pdf,.jpg,.png" onChange={e => setTherapistRegData({...therapistRegData, degreeFile: e.target.files?.[0] || null})} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100" />
+                    </div>
+
+                    <button onClick={handleTherapistSignup} disabled={isLoading} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg disabled:opacity-70">
+                        {isLoading ? 'Submitting Application...' : 'Submit Application'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      );
+  }
+
   // 1. LANDING VIEW - CLONED AESTHETIC (Abby.gg Style)
   if (view === 'landing') {
     return (
-      <div className="min-h-screen bg-[#FDFCF8] font-sans overflow-x-hidden">
+      <div className="min-h-screen bg-[#FDFCF8] font-sans overflow-x-hidden" style={{ scrollBehavior: 'smooth' }}>
         {/* Navbar */}
         <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-lg border-b border-slate-100">
             <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
@@ -295,10 +597,10 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                     <span className="font-bold text-2xl text-slate-900 tracking-tight">Sukoon</span>
                 </div>
                 <div className="hidden lg:flex gap-8 text-sm font-medium text-slate-600">
+                    <button onClick={() => navigateTo('#features')} className="hover:text-slate-900 transition-colors">Features</button>
                     <button onClick={() => navigateTo('/therapy/types')} className="hover:text-slate-900 transition-colors">Approaches</button>
-                    <button onClick={() => navigateTo('/therapy/topics')} className="hover:text-slate-900 transition-colors">Topics</button>
                     <button onClick={() => navigateTo('/university-support')} className="hover:text-slate-900 transition-colors">Students</button>
-                    <button onClick={() => navigateTo('/about')} className="hover:text-slate-900 transition-colors">About</button>
+                    <button onClick={() => setView('therapist-landing')} className="text-teal-600 font-bold hover:underline">For Therapists</button>
                 </div>
                 <div className="flex gap-3">
                     <button onClick={() => setView('login')} className="px-5 py-2.5 text-slate-900 font-bold hover:bg-slate-50 rounded-full transition-colors">Log In</button>
@@ -329,20 +631,15 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                         Start Chatting Free
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
                     </button>
-                    <button onClick={() => navigateTo('/university-support')} className="h-14 px-8 bg-white text-slate-900 text-lg font-bold rounded-full shadow-md hover:shadow-lg border border-slate-100 hover:bg-slate-50 transition-all">
-                        For Students
+                    <button onClick={() => navigateTo('#features')} className="h-14 px-8 bg-white text-slate-900 text-lg font-bold rounded-full shadow-md hover:shadow-lg border border-slate-100 hover:bg-slate-50 transition-all">
+                        Learn More
                     </button>
-                </div>
-                <div className="mt-12 flex items-center justify-center gap-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
-                    <div className="text-xl font-bold text-slate-400">iqra university</div>
-                    <div className="text-xl font-bold text-slate-400">student life</div>
-                    <div className="text-xl font-bold text-slate-400">mental health</div>
                 </div>
             </div>
         </header>
 
         {/* Bento Grid Features */}
-        <section className="py-20 px-6 max-w-7xl mx-auto">
+        <section id="features" className="py-20 px-6 max-w-7xl mx-auto scroll-mt-20">
             <h2 className="text-3xl font-bold text-slate-900 mb-12 text-center">Everything you need to find calm</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
                 {/* Large Card */}
@@ -406,21 +703,6 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
             </div>
         </section>
 
-        {/* WebSuite Ad */}
-        <section className="px-6 py-12">
-            <div className="max-w-5xl mx-auto bg-slate-900 rounded-[2rem] p-12 text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl"></div>
-                <div className="relative z-10">
-                    <div className="text-teal-400 font-bold text-sm tracking-wider uppercase mb-2">For Developers & Startups</div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Need a high-performance website?</h3>
-                    <p className="text-slate-400 max-w-md">Built with WebSuite by WebSyntex. We create stunning, responsive platforms like this one.</p>
-                </div>
-                <button onClick={() => alert("Redirects to WebSuite")} className="relative z-10 px-8 py-3 bg-white text-slate-900 rounded-full font-bold hover:bg-teal-50 transition-colors shadow-lg whitespace-nowrap">
-                    Get Free Audit
-                </button>
-            </div>
-        </section>
-
         {/* Footer */}
         <footer className="bg-white pt-20 pb-10 border-t border-slate-100">
             <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 mb-16">
@@ -449,7 +731,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                     <ul className="space-y-3 text-sm text-slate-500">
                         <li><button onClick={() => setView('login')} className="hover:text-teal-600">Log In</button></li>
                         <li><button onClick={() => setView('signup')} className="hover:text-teal-600">Sign Up</button></li>
-                        <li><button onClick={() => setView('login')} className="hover:text-teal-600">Therapist Login</button></li>
+                        <li><button onClick={() => setView('therapist-landing')} className="hover:text-teal-600">For Therapists</button></li>
                         <li><button onClick={() => setView('login')} className="hover:text-teal-600">Admin Login</button></li>
                     </ul>
                 </div>
@@ -466,14 +748,14 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
             
             <div className="max-w-7xl mx-auto px-6 border-t border-slate-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
                 <p>© {new Date().getFullYear()} Sukoon AI. Not a medical service.</p>
-                <p>© {new Date().getFullYear()} Sukoon — Built by WebSyntex.</p>
+                <p>© {new Date().getFullYear()} Sukoon — Built by students.</p>
             </div>
         </footer>
       </div>
     );
   }
 
-  // 2. LOGIN & 3. SIGNUP Views (unchanged logic, updated container styling for consistency)
+  // 2. LOGIN & 3. SIGNUP Views
   if (view === 'login') {
       return (
         <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center p-6">
@@ -483,7 +765,28 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                     <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
                     <p className="text-slate-500">Login to your safe space.</p>
                 </div>
-                {error && <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-sm rounded-xl text-center">{error}</div>}
+                {error && <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-sm rounded-xl text-center border border-rose-100">{error}</div>}
+                
+                {/* --- QUICK LOGIN BUTTONS --- */}
+                <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <p className="font-bold text-xs uppercase text-slate-400 mb-3 text-center">Tap to Quick Login (Demo)</p>
+                    <div className="space-y-2">
+                        <button onClick={() => { handleMockFill('student'); }} className="w-full py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-100 hover:border-slate-300 transition-all flex justify-between px-4">
+                            <span>Student Account</span>
+                            <span className="text-teal-600">student@sukoon.com</span>
+                        </button>
+                        <button onClick={() => { handleMockFill('therapist'); }} className="w-full py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-100 hover:border-slate-300 transition-all flex justify-between px-4">
+                            <span>Therapist Account</span>
+                            <span className="text-indigo-600">test@sukoon.com</span>
+                        </button>
+                        <button onClick={() => { handleMockFill('admin'); }} className="w-full py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-100 hover:border-slate-300 transition-all flex justify-between px-4">
+                            <span>Admin Panel</span>
+                            <span className="text-rose-600">admin@sukoon.com</span>
+                        </button>
+                    </div>
+                </div>
+                {/* --------------------------- */}
+
                 <div className="space-y-4">
                     <input type="email" placeholder="Email" className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900 transition-all" value={loginData.email} onChange={e => setLoginData({...loginData, email: e.target.value})} />
                     <input type="password" placeholder="Password" className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900 transition-all" value={loginData.password} onChange={e => setLoginData({...loginData, password: e.target.value})} />
@@ -519,13 +822,12 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                             <input type="number" placeholder="Age" className="w-1/3 p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.age} onChange={e => setRegData({...regData, age: e.target.value})} />
                             <input type="text" placeholder="Region" className="w-2/3 p-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-slate-900" value={regData.region} onChange={e => setRegData({...regData, region: e.target.value})} />
                         </div>
-                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.gender} onChange={e => setRegData({...regData, gender: e.target.value as Gender})}>
-                            <option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option>
+                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.gender} onChange={e => setRegData({...regData, gender: e.target.value})}>
+                            <option value="" disabled>Please select Gender</option>
+                            <option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option><option value="Prefer not to say">Prefer not to say</option>
                         </select>
-                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.religion} onChange={e => setRegData({...regData, religion: e.target.value as Religion})}>
-                            <option value="Hindu">Hindu</option><option value="Muslim">Muslim</option><option value="Christian">Christian</option><option value="Other">Other</option>
-                        </select>
-                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.profession} onChange={e => setRegData({...regData, profession: e.target.value as Profession})}>
+                        <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.profession} onChange={e => setRegData({...regData, profession: e.target.value})}>
+                            <option value="" disabled>Please select Profession</option>
                             <option value="Student">Student</option><option value="Working Professional">Working Professional</option><option value="Both">Both</option><option value="Other">Other</option>
                         </select>
                          <select className="w-full p-3 bg-slate-50 rounded-xl outline-none text-slate-700" value={regData.language} onChange={e => setRegData({...regData, language: e.target.value as Language})}>
@@ -536,7 +838,28 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
                         </select>
                     </div>
                 </div>
-                <button onClick={handleSignup} disabled={isLoading} className="w-full mt-8 py-4 bg-teal-400 text-white rounded-xl font-bold hover:bg-teal-500 transition-all shadow-lg hover:shadow-xl disabled:opacity-70">{isLoading ? 'Creating Account...' : 'Create Account'}</button>
+
+                {/* CAPTCHA Widget (Simulation) */}
+                <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <input 
+                            type="checkbox" 
+                            id="captcha" 
+                            className="w-6 h-6 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                            checked={captchaVerified}
+                            onChange={(e) => setCaptchaVerified(e.target.checked)}
+                        />
+                        <label htmlFor="captcha" className="text-sm font-medium text-slate-700 select-none cursor-pointer">
+                            I am human (Security Check)
+                        </label>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-right">
+                        <div>Protected by Supabase</div>
+                        <div className="font-bold">Turnstile / hCaptcha</div>
+                    </div>
+                </div>
+
+                <button onClick={handleSignup} disabled={isLoading} className="w-full mt-6 py-4 bg-teal-400 text-white rounded-xl font-bold hover:bg-teal-500 transition-all shadow-lg hover:shadow-xl disabled:opacity-70">{isLoading ? 'Creating Account...' : 'Create Account'}</button>
                 <div className="mt-6 text-center text-sm">
                     <p className="text-slate-500">Already have an account? <button onClick={() => setView('login')} className="text-teal-600 font-bold hover:underline">Log In</button></p>
                     <button onClick={() => setView('landing')} className="mt-4 text-slate-400 hover:text-slate-600">Back to Home</button>

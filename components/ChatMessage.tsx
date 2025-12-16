@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { Message, MessageRole } from '../types';
 
@@ -8,7 +9,56 @@ interface ChatMessageProps {
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayAudio }) => {
   const isUser = message.role === MessageRole.USER;
+  const isSystem = message.role === MessageRole.SYSTEM;
   
+  if (isSystem && message.referralTherapists) {
+      return (
+          <div className="flex w-full mb-8 justify-center animate-fade-in">
+              <div className="w-full max-w-lg bg-teal-50 dark:bg-navy-800 border border-teal-100 dark:border-teal-900 rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-teal-100 dark:bg-teal-900 rounded-full flex items-center justify-center text-xl">🛡️</div>
+                      <div>
+                          <h3 className="font-bold text-slate-800 dark:text-white text-sm">Message from Support Team</h3>
+                          <div className="text-[10px] text-teal-600 dark:text-teal-400 font-bold uppercase tracking-wider">Priority Intervention</div>
+                      </div>
+                  </div>
+                  
+                  <p className="text-slate-600 dark:text-slate-300 text-sm mb-6 leading-relaxed">
+                      {message.text}
+                  </p>
+
+                  <div className="space-y-3">
+                      {message.referralTherapists.map((therapist) => (
+                          <div key={therapist.id} className="bg-white dark:bg-navy-950 p-4 rounded-xl border border-slate-100 dark:border-navy-700 flex justify-between items-center shadow-sm">
+                              <div className="flex items-center gap-3">
+                                  <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-navy-800 flex items-center justify-center font-bold text-slate-500 overflow-hidden">
+                                      {therapist.imageUrl ? <img src={therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" /> : therapist.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                      <div className="font-bold text-slate-800 dark:text-white text-sm">{therapist.name}</div>
+                                      <div className="text-xs text-slate-500 dark:text-slate-400">{therapist.specialty}</div>
+                                      <div className="flex items-center gap-1 text-[10px] text-amber-500 font-bold mt-0.5">
+                                          <span>⭐ {therapist.rating || 4.9}</span>
+                                          <span className="text-slate-300">({therapist.reviewCount || 20}+ Reviews)</span>
+                                      </div>
+                                  </div>
+                              </div>
+                              <a 
+                                  href={therapist.bookingUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 bg-teal-600 text-white text-xs font-bold rounded-lg hover:bg-teal-700 shadow-md transition-transform hover:scale-105"
+                              >
+                                  Book Priority
+                              </a>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
   return (
     <div className={`flex w-full mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex max-w-[85%] md:max-w-[70%] ${isUser ? 'flex-row-reverse' : 'flex-row'} items-end gap-2`}>

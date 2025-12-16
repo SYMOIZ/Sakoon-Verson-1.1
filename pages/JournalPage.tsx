@@ -1,6 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { JournalEntry, Session } from '../types';
 import { getSessions, getJournals, saveJournals } from '../services/ragService';
+import { saveJournalEntry } from '../services/dataService';
+import { aiMemoryService } from '../services/aiMemoryService';
 
 interface JournalPageProps {
     userId: string;
@@ -13,11 +16,16 @@ export const JournalPage: React.FC<JournalPageProps> = ({ userId }) => {
   const [newEntry, setNewEntry] = useState('');
 
   useEffect(() => {
-    setEntries(getJournals(userId));
-    setSessions(getSessions(userId).sort((a,b) => b.startTime - a.startTime));
+    const fetchData = async () => {
+      const fetchedJournals = await getJournals(userId);
+      setEntries(fetchedJournals);
+      const fetchedSessions = await getSessions(userId);
+      setSessions(fetchedSessions.sort((a,b) => b.startTime - a.startTime));
+    };
+    fetchData();
   }, [userId]);
 
-  const saveEntry = () => {
+  const saveEntry = async () => {
     if (!newEntry.trim()) return;
     const entry: JournalEntry = {
       id: crypto.randomUUID(),
@@ -26,9 +34,21 @@ export const JournalPage: React.FC<JournalPageProps> = ({ userId }) => {
       mood: 'neutral', // simplified
       timestamp: Date.now()
     };
+    
+    // 1. Save locally (UI update)
     const updated = [entry, ...entries];
     setEntries(updated);
     saveJournals(userId, updated);
+    
+    // 2. INGESTION PIPELINE: DB Save
+    await saveJournalEntry(userId, entry);
+
+    // 3. INGESTION PIPELINE: Vector Embedding & Memory Storage
+    // We treat Journal entries as 'clinical_note' or 'bio' context for the AI
+    if (newEntry.length > 15) {
+       await aiMemoryService.storeMemory(userId, `Journal (${entry.title}): ${newEntry}`, 'clinical_note');
+    }
+
     setNewEntry('');
   };
 

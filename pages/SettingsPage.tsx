@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserSettings, TherapistStyle, PersonalityMode, Gender, Profession, TonePreference, Language } from '../types';
 import { deleteTodayData, deleteAllData, deleteDateData } from '../services/ragService';
@@ -75,6 +76,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         <option value="Female">Female</option>
                         <option value="Male">Male</option>
                         <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
                     </select>
                 </div>
                  <div>

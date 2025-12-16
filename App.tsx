@@ -8,6 +8,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { TherapistDirectory } from './pages/TherapistDirectory';
 import { SupportPage } from './pages/SupportPage';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { AdminBroadcast } from './pages/admin/Broadcast';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { TeamPage } from './pages/TeamPage';
 import { TermsPage } from './pages/TermsPage';
@@ -32,6 +34,7 @@ function App() {
         const u = JSON.parse(storedUser);
         setUser(u);
         if (u.isAdmin) setActiveTab('admin-dashboard');
+        else if (u.role === 'therapist') setActiveTab('therapist-overview');
     }
   }, []);
 
@@ -48,6 +51,7 @@ function App() {
   const handleLogin = (settings: UserSettings) => {
       handleUpdateUser(settings);
       if(settings.isAdmin) setActiveTab('admin-dashboard');
+      else if (settings.role === 'therapist') setActiveTab('therapist-overview');
       else setActiveTab('chat');
   };
 
@@ -67,8 +71,17 @@ function App() {
   // Render Logic
   const renderContent = () => {
     if (user.isAdmin) {
-        if (activeTab === 'therapist-dashboard') return <TherapistDashboard />;
+        if (activeTab === 'admin-broadcast') return <AdminBroadcast />;
+        if (activeTab === 'therapist-dashboard') return <TherapistDashboard view="overview" />;
         if (activeTab.startsWith('admin-')) return <AdminDashboard currentView={activeTab} />;
+    }
+
+    if (user.role === 'therapist') {
+        if (activeTab === 'notifications') return <NotificationsPage />;
+        if (activeTab.startsWith('therapist-')) {
+            const view = activeTab.replace('therapist-', '');
+            return <TherapistDashboard view={view as any} />;
+        }
     }
 
     switch(activeTab) {
@@ -80,7 +93,9 @@ function App() {
       case 'profile': return <ProfilePage settings={user} />;
       case 'team': return <TeamPage />;
       case 'terms': return <TermsPage />;
-      case 'therapist-dashboard': return <TherapistDashboard />;
+      case 'notifications': return <NotificationsPage />;
+      // Fallback for therapist
+      case 'therapist-dashboard': return <TherapistDashboard view="overview" />;
       default: return <ChatPage settings={user} onUpdateUser={handleUpdateUser} onSignUp={handleLogout} />;
     }
   };
