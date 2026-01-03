@@ -9,7 +9,10 @@ interface MemoryPageProps {
 export const MemoryPage: React.FC<MemoryPageProps> = ({ userId }) => {
   const [memories, setMemories] = useState<Memory[]>([]);
 
-  const load = () => setMemories(getMemories(userId));
+  const load = async () => {
+    const data = await getMemories(userId);
+    setMemories(data);
+  };
 
   useEffect(() => {
     load();

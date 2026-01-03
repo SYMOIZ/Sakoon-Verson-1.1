@@ -177,7 +177,10 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onComplete }) => {
               preferredLanguage: 'English', tonePreference: 'Direct',
               voiceEnabled: false, autoPlayAudio: false, memoryEnabled: true,
               therapistStyle: 'gentle', personalityMode: 'introvert',
-              darkMode: false, isAdmin: true, stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
+              darkMode: false, isAdmin: true, 
+              role: 'admin',
+              accountStatus: 'active',
+              stats: { totalActiveDays: 0, lastActiveDate: '', badges: [] }
           });
           setIsLoading(false);
           return;
